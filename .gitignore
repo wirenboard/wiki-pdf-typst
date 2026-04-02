@@ -1,0 +1,5 @@
+output/
+bin/
+__pycache__/
+*.pyc
+credential-proxy.log
