@@ -263,11 +263,10 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
             all_frames.append((frame, cumulative_ms))
             cumulative_ms += duration
 
-        cycle_duration = cumulative_ms  # total duration of one cycle
-
-        # Select from one cycle, then duplicate for 2 cycles
-        # Reserve half the budget for each cycle
-        per_cycle = max_frames // 2
+        cycle_duration = cumulative_ms
+        # Only show 2 cycles for short animations (< 4 frames)
+        two_cycles = n_frames < 4
+        per_cycle = max_frames // 2 if two_cycles else max_frames
 
         if len(all_frames) <= per_cycle:
             selected_indices = list(range(len(all_frames)))
@@ -308,11 +307,12 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
             paths.append(frame_path)
             timestamps.append(ts_ms)
 
-        # Cycle 2 — reuse the same frame PNGs with offset timestamps
-        for i, idx in enumerate(selected_indices):
-            _, ts_ms = all_frames[idx]
-            paths.append(paths[i])  # same image file
-            timestamps.append(ts_ms + cycle_duration)
+        # Cycle 2 for short animations
+        if two_cycles:
+            for i, idx in enumerate(selected_indices):
+                _, ts_ms = all_frames[idx]
+                paths.append(paths[i])
+                timestamps.append(ts_ms + cycle_duration)
 
         return paths, timestamps
     except Exception as e:
