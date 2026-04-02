@@ -77,10 +77,8 @@
 #show figure.where(kind: table): set figure.caption(position: top)
 #show figure.where(kind: table): set block(breakable: true)
 
-// Images - center
-#show image: it => {
-  block(width: 100%, align(center, it))
-}
+// Figure images are centered via the figure itself; no global image show rule
+// to avoid affecting inline images in tables and grids
 
 // Helper: image constrained to max 50% page height for tall/portrait images
 #let constrained-image(path, ..args) = layout(size => {
