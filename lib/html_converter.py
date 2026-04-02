@@ -724,9 +724,19 @@ class HtmlToTypstConverter:
         elif name == "img":
             src = tag.get("src", "")
             local_path = self.image_map.get(src)
-            if local_path:
-                return f'#image("{local_path}", height: 1.2em)'
-            return ""
+            if not local_path:
+                return ""
+            gif_data = self.gif_frames.get(src) if src else None
+            if gif_data:
+                frame_paths, timestamps = gif_data
+                cols = min(4, len(frame_paths))
+                parts = [f"#grid(columns: {cols}, gutter: 4pt,"]
+                for fp, ts in zip(frame_paths, timestamps):
+                    ts_str = f"{ts / 1000:.1f}с" if ts >= 1000 else f"{ts}мс"
+                    parts.append(f'  stack(image("{fp}", height: 2em), text(size: 6pt)[{ts_str}]),')
+                parts.append(")")
+                return "\n".join(parts)
+            return f'#image("{local_path}", height: 1.2em)'
         elif name == "br":
             return " " if self.in_table else " \\"
         elif name == "sup":
