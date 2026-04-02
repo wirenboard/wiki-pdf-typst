@@ -499,6 +499,13 @@ class HtmlToTypstConverter:
                 rowspan = int(cell.get("rowspan", 1))
                 fill_color = self._extract_bg_color(cell)
 
+                # If this is the only cell in the row and it tries to span
+                # all columns, drop colspan — avoids conflict with rowspan cells
+                if len(cells) == 1 and colspan >= num_cols:
+                    colspan = 1
+                else:
+                    colspan = min(colspan, num_cols)
+
                 cell_args = []
                 if colspan > 1:
                     cell_args.append(f"colspan: {colspan}")
@@ -549,7 +556,10 @@ class HtmlToTypstConverter:
     def _process_div(self, node: Tag):
         el_id = node.get("id")
         if el_id and isinstance(el_id, str) and el_id not in _SKIP_DIV_IDS:
-            self._emit(f"#metadata(none) <{el_id}>")
+            # Sanitize: Typst labels only allow alphanumeric, hyphens, underscores
+            safe_id = re.sub(r"[^\w-]", "", el_id)
+            if safe_id:
+                self._emit(f"#metadata(none) <{safe_id}>")
 
         classes = node.get("class") or []
 
@@ -671,8 +681,7 @@ class HtmlToTypstConverter:
             if not text:
                 return ""
             if href.startswith("#"):
-                label = href[1:]
-                return f'#link(label("{label}"))[{self._escape(text)}]' if label else self._escape(text)
+                return self._escape(text)
             if href.startswith("/"):
                 href = self.base_url + href
             return f'#link("{href}")[{self._escape(text)}]'
