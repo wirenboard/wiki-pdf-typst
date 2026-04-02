@@ -388,7 +388,7 @@ class HtmlToTypstConverter:
                     text = self._inline_content(child).strip()
                     if text:
                         self._emit_blank()
-                        self._emit(f"*{text}*")
+                        self._emit(f"#strong[{text}]")
                 elif child.name == "dd":
                     text = self._inline_content(child).strip()
                     if text:
@@ -493,18 +493,28 @@ class HtmlToTypstConverter:
         for row_idx, tr in enumerate(rows):
             cells = tr.find_all(["th", "td"], recursive=False)
 
+            # Sum of all explicit colspans in this row
+            row_explicit = sum(int(c.get("colspan", 1)) for c in cells)
+
             for cell in cells:
                 content = self._inline_content(cell).strip()
                 colspan = int(cell.get("colspan", 1))
                 rowspan = int(cell.get("rowspan", 1))
                 fill_color = self._extract_bg_color(cell)
 
-                # If this is the only cell in the row and it tries to span
-                # all columns, drop colspan — avoids conflict with rowspan cells
+                # Fix colspan overflow from rowspan-occupied columns
                 if len(cells) == 1 and colspan >= num_cols:
+                    # Single-cell row spanning all: drop colspan
                     colspan = 1
-                else:
-                    colspan = min(colspan, num_cols)
+                elif row_explicit > num_cols and colspan > 1:
+                    # Row total exceeds table — scale down proportionally
+                    colspan = max(1, colspan * num_cols // row_explicit)
+                elif len(cells) > 1 and colspan > num_cols // 2:
+                    # Multi-cell row with large colspan — likely rowspan conflict.
+                    # Cap so total explicit colspans fit in num_cols.
+                    other_cols = sum(int(c.get("colspan", 1)) for c in cells if c is not cell)
+                    colspan = min(colspan, max(1, num_cols - other_cols))
+                colspan = min(colspan, num_cols)
 
                 cell_args = []
                 if colspan > 1:
@@ -514,7 +524,7 @@ class HtmlToTypstConverter:
                 if fill_color:
                     cell_args.append(f"fill: rgb(\"{fill_color}\")")
                 if row_idx < header_rows and cell.name == "th":
-                    content = f"*{content}*" if content else ""
+                    content = f"#strong[{content}]" if content else ""
 
                 if cell_args:
                     args = ", ".join(cell_args)
@@ -666,10 +676,10 @@ class HtmlToTypstConverter:
 
         if name in ("b", "strong"):
             content = self._inline_content(tag).strip()
-            return f"*{content}*" if content else ""
+            return f"#strong[{content}]" if content else ""
         elif name in ("i", "em"):
             content = self._inline_content(tag).strip()
-            return f"_{content}_" if content else ""
+            return f"#emph[{content}]" if content else ""
         elif name == "code" and not self.in_code:
             text = tag.get_text()
             return f"`{text}`" if text else ""
