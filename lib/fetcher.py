@@ -224,18 +224,20 @@ def download_images(html: str, base_url: str, output_dir: str) -> tuple[dict[str
                     print(f"  Warning: failed to download {src_key}", flush=True)
 
     # Post-process GIF files: extract diverse frames
-    gif_frames = {}  # src -> list of relative frame paths
+    gif_frames = {}  # src -> (list of relative frame paths, list of timestamps_ms)
     for src, rel_path in list(image_map.items()):
         if rel_path.lower().endswith(".gif"):
             abs_path = os.path.join(output_dir, rel_path)
-            frames = _extract_gif_frames(abs_path, images_dir)
-            if frames:
-                gif_frames[src] = [os.path.join("images", os.path.basename(f)) for f in frames]
+            result = _extract_gif_frames(abs_path, images_dir)
+            if result:
+                paths, timestamps = result
+                rel_paths = [os.path.join("images", os.path.basename(f)) for f in paths]
+                gif_frames[src] = (rel_paths, timestamps)
 
     return image_map, gif_frames
 
 
-def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> list[str]:
+def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> tuple[list[str], list[int]] | None:
     """Extract up to max_frames visually diverse frames from an animated GIF.
 
     Returns list of saved PNG file paths, or empty list if not animated.
@@ -243,56 +245,64 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
     try:
         from PIL import Image
     except ImportError:
-        return []
+        return None
 
     try:
         img = Image.open(gif_path)
         n_frames = getattr(img, "n_frames", 1)
         if n_frames <= 1:
-            return []
+            return None
 
-        # Extract all frames as RGBA arrays
+        # Extract all frames as RGBA arrays with cumulative timestamps
         all_frames = []
+        cumulative_ms = 0
         for i in range(n_frames):
             img.seek(i)
+            duration = img.info.get("duration", 100)  # ms per frame, default 100
             frame = img.convert("RGBA")
-            all_frames.append(frame)
+            all_frames.append((frame, cumulative_ms))
+            cumulative_ms += duration
 
         if len(all_frames) <= max_frames:
-            selected = all_frames
+            selected_indices = list(range(len(all_frames)))
         else:
             # Select frames with maximum visual diversity using greedy farthest-point
             def frame_diff(a, b):
                 arr_a = bytearray(a.tobytes())
                 arr_b = bytearray(b.tobytes())
-                # Sample pixels for speed (every 100th byte)
                 diff = sum(abs(arr_a[i] - arr_b[i]) for i in range(0, min(len(arr_a), len(arr_b)), 100))
                 return diff
 
-            selected = [all_frames[0]]
+            selected_indices = [0]
             remaining = list(range(1, len(all_frames)))
 
-            while len(selected) < max_frames and remaining:
+            while len(selected_indices) < max_frames and remaining:
                 best_idx = 0
                 best_min_dist = -1
+                sel_frames = [all_frames[i][0] for i in selected_indices]
                 for j, r_idx in enumerate(remaining):
-                    min_dist = min(frame_diff(all_frames[r_idx], s) for s in selected)
+                    min_dist = min(frame_diff(all_frames[r_idx][0], s) for s in sel_frames)
                     if min_dist > best_min_dist:
                         best_min_dist = min_dist
                         best_idx = j
-                selected.append(all_frames[remaining.pop(best_idx)])
+                selected_indices.append(remaining.pop(best_idx))
 
-        # Save selected frames as PNGs
+            selected_indices.sort()
+
+        # Save selected frames as PNGs, return paths and timestamps
         base = os.path.splitext(os.path.basename(gif_path))[0]
         paths = []
-        for i, frame in enumerate(selected):
+        timestamps = []
+        for i, idx in enumerate(selected_indices):
+            frame, ts_ms = all_frames[idx]
             frame_path = os.path.join(output_dir, f"{base}_frame{i}.png")
             frame.convert("RGB").save(frame_path)
             paths.append(frame_path)
-        return paths
+            timestamps.append(ts_ms)
+        return paths, timestamps
     except Exception as e:
         print(f"  Warning: GIF frame extraction failed for {gif_path}: {e}", flush=True)
-        return []
+        return None
 
 
 def _download_one(

@@ -626,14 +626,16 @@ class HtmlToTypstConverter:
     def _emit_figure(self, local_path: str, caption: str = "", src: str = ""):
         """Emit a Typst figure with a constrained image and optional caption.
         For animated GIFs, renders a grid of extracted frames instead."""
-        frames = self.gif_frames.get(src, []) if src else []
+        gif_data = self.gif_frames.get(src) if src else None
         self._emit_blank()
-        if frames:
-            cols = min(4, len(frames))
+        if gif_data:
+            frame_paths, timestamps = gif_data
+            cols = min(4, len(frame_paths))
             self._emit('#figure(')
             self._emit(f'  grid(columns: {cols}, gutter: 6pt,')
-            for frame_path in frames:
-                self._emit(f'    image("{frame_path}"),')
+            for frame_path, ts_ms in zip(frame_paths, timestamps):
+                ts_str = f"{ts_ms / 1000:.1f} с" if ts_ms >= 1000 else f"{ts_ms} мс"
+                self._emit(f'    figure(image("{frame_path}"), caption: [{ts_str}], numbering: none),')
             self._emit('  ),')
             if caption:
                 self._emit(f'  caption: [{caption}],')
