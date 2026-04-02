@@ -733,7 +733,7 @@ class HtmlToTypstConverter:
                 parts = [f"#grid(columns: {cols}, gutter: 4pt,"]
                 for fp, ts in zip(frame_paths, timestamps):
                     ts_str = f"{ts / 1000:.1f}с" if ts >= 1000 else f"{ts}мс"
-                    parts.append(f'  stack(image("{fp}", height: 2em), text(size: 6pt)[{ts_str}]),')
+                    parts.append(f'  stack(spacing: 2pt, image("{fp}", height: 1.2em), text(size: 6pt)[{ts_str}]),')
                 parts.append(")")
                 return "\n".join(parts)
             return f'#image("{local_path}", height: 1.2em)'
