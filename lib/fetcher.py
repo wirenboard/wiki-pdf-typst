@@ -263,7 +263,13 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
             all_frames.append((frame, cumulative_ms))
             cumulative_ms += duration
 
-        if len(all_frames) <= max_frames:
+        cycle_duration = cumulative_ms  # total duration of one cycle
+
+        # Select from one cycle, then duplicate for 2 cycles
+        # Reserve half the budget for each cycle
+        per_cycle = max_frames // 2
+
+        if len(all_frames) <= per_cycle:
             selected_indices = list(range(len(all_frames)))
         else:
             # Select frames with maximum visual diversity using greedy farthest-point
@@ -276,7 +282,7 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
             selected_indices = [0]
             remaining = list(range(1, len(all_frames)))
 
-            while len(selected_indices) < max_frames and remaining:
+            while len(selected_indices) < per_cycle and remaining:
                 best_idx = 0
                 best_min_dist = -1
                 sel_frames = [all_frames[i][0] for i in selected_indices]
@@ -289,16 +295,25 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
 
             selected_indices.sort()
 
-        # Save selected frames as PNGs, return paths and timestamps
+        # Build 2 cycles: cycle 1 frames + cycle 2 (same frames, offset timestamps)
         base = os.path.splitext(os.path.basename(gif_path))[0]
         paths = []
         timestamps = []
+
+        # Cycle 1
         for i, idx in enumerate(selected_indices):
             frame, ts_ms = all_frames[idx]
             frame_path = os.path.join(output_dir, f"{base}_frame{i}.png")
             frame.convert("RGB").save(frame_path)
             paths.append(frame_path)
             timestamps.append(ts_ms)
+
+        # Cycle 2 — reuse the same frame PNGs with offset timestamps
+        for i, idx in enumerate(selected_indices):
+            _, ts_ms = all_frames[idx]
+            paths.append(paths[i])  # same image file
+            timestamps.append(ts_ms + cycle_duration)
+
         return paths, timestamps
     except Exception as e:
         print(f"  Warning: GIF frame extraction failed for {gif_path}: {e}", flush=True)
