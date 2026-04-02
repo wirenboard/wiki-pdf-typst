@@ -45,12 +45,12 @@ def main():
 
     # Step 2: Download images (including from inlined pages)
     print("Downloading images...", file=sys.stderr)
-    image_map = fetcher.download_images(html, base_url, output_dir)
+    image_map, gif_frames = fetcher.download_images(html, base_url, output_dir)
     print(f"Downloaded {len(image_map)} images", file=sys.stderr)
 
     # Step 3: Convert HTML to Typst
     print("Converting to Typst...", file=sys.stderr)
-    typst_content, cover_image = html_converter.convert(html, image_map, base_url)
+    typst_content, cover_image = html_converter.convert(html, image_map, base_url, gif_frames)
 
     # Step 4: Build the full .typ document
     template_path = os.path.join(os.path.dirname(__file__), "templates", "manual.typ")

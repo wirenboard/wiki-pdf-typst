@@ -174,7 +174,7 @@ def inline_link_sections(html: str, base_url: str) -> str:
     return html
 
 
-def download_images(html: str, base_url: str, output_dir: str) -> dict[str, str]:
+def download_images(html: str, base_url: str, output_dir: str) -> tuple[dict[str, str], dict[str, list[str]]]:
     """Download all content images from the HTML.
 
     Returns a mapping of original src URL -> relative file path for Typst.
@@ -223,7 +223,76 @@ def download_images(html: str, base_url: str, output_dir: str) -> dict[str, str]
                 else:
                     print(f"  Warning: failed to download {src_key}", flush=True)
 
-    return image_map
+    # Post-process GIF files: extract diverse frames
+    gif_frames = {}  # src -> list of relative frame paths
+    for src, rel_path in list(image_map.items()):
+        if rel_path.lower().endswith(".gif"):
+            abs_path = os.path.join(output_dir, rel_path)
+            frames = _extract_gif_frames(abs_path, images_dir)
+            if frames:
+                gif_frames[src] = [os.path.join("images", os.path.basename(f)) for f in frames]
+
+    return image_map, gif_frames
+
+
+def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> list[str]:
+    """Extract up to max_frames visually diverse frames from an animated GIF.
+
+    Returns list of saved PNG file paths, or empty list if not animated.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+
+    try:
+        img = Image.open(gif_path)
+        n_frames = getattr(img, "n_frames", 1)
+        if n_frames <= 1:
+            return []
+
+        # Extract all frames as RGBA arrays
+        all_frames = []
+        for i in range(n_frames):
+            img.seek(i)
+            frame = img.convert("RGBA")
+            all_frames.append(frame)
+
+        if len(all_frames) <= max_frames:
+            selected = all_frames
+        else:
+            # Select frames with maximum visual diversity using greedy farthest-point
+            def frame_diff(a, b):
+                arr_a = bytearray(a.tobytes())
+                arr_b = bytearray(b.tobytes())
+                # Sample pixels for speed (every 100th byte)
+                diff = sum(abs(arr_a[i] - arr_b[i]) for i in range(0, min(len(arr_a), len(arr_b)), 100))
+                return diff
+
+            selected = [all_frames[0]]
+            remaining = list(range(1, len(all_frames)))
+
+            while len(selected) < max_frames and remaining:
+                best_idx = 0
+                best_min_dist = -1
+                for j, r_idx in enumerate(remaining):
+                    min_dist = min(frame_diff(all_frames[r_idx], s) for s in selected)
+                    if min_dist > best_min_dist:
+                        best_min_dist = min_dist
+                        best_idx = j
+                selected.append(all_frames[remaining.pop(best_idx)])
+
+        # Save selected frames as PNGs
+        base = os.path.splitext(os.path.basename(gif_path))[0]
+        paths = []
+        for i, frame in enumerate(selected):
+            frame_path = os.path.join(output_dir, f"{base}_frame{i}.png")
+            frame.convert("RGB").save(frame_path)
+            paths.append(frame_path)
+        return paths
+    except Exception as e:
+        print(f"  Warning: GIF frame extraction failed for {gif_path}: {e}", flush=True)
+        return []
 
 
 def _download_one(

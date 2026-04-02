@@ -57,20 +57,23 @@ _RE_FIGURE_IMG = re.compile(r'constrained-image\("([^"]+)"')
 _SKIP_DIV_IDS = {"mw-parser-output", "mw-content-text", "content", "bodyContent", "mw-body"}
 
 
-def convert(html: str, image_map: dict[str, str], base_url: str) -> tuple[str, str | None]:
+def convert(html: str, image_map: dict[str, str], base_url: str,
+            gif_frames: dict[str, list[str]] | None = None) -> tuple[str, str | None]:
     """Convert MediaWiki HTML to Typst markup string.
 
     Returns (typst_content, first_image_path_or_None).
     """
-    converter = HtmlToTypstConverter(image_map, base_url)
+    converter = HtmlToTypstConverter(image_map, base_url, gif_frames or {})
     content = converter.convert(html)
     return content, converter.cover_image
 
 
 class HtmlToTypstConverter:
-    def __init__(self, image_map: dict[str, str], base_url: str):
+    def __init__(self, image_map: dict[str, str], base_url: str,
+                 gif_frames: dict[str, list[str]] | None = None):
         self.image_map = image_map
         self.base_url = base_url
+        self.gif_frames = gif_frames or {}
         self.parts: list[str] = []
         self.list_depth = 0
         self.in_table = False
@@ -618,16 +621,29 @@ class HtmlToTypstConverter:
                 caption = f"{self._escape(gallery_caption)}. {caption}"
             elif gallery_caption:
                 caption = self._escape(gallery_caption)
-            self._emit_figure(local_path, caption)
+            self._emit_figure(local_path, caption, src)
 
-    def _emit_figure(self, local_path: str, caption: str = ""):
-        """Emit a Typst figure with a constrained image and optional caption."""
+    def _emit_figure(self, local_path: str, caption: str = "", src: str = ""):
+        """Emit a Typst figure with a constrained image and optional caption.
+        For animated GIFs, renders a grid of extracted frames instead."""
+        frames = self.gif_frames.get(src, []) if src else []
         self._emit_blank()
-        self._emit('#figure(')
-        self._emit(f'  constrained-image("{local_path}", width: 70%),')
-        if caption:
-            self._emit(f'  caption: [{caption}],')
-        self._emit(')')
+        if frames:
+            cols = min(4, len(frames))
+            self._emit('#figure(')
+            self._emit(f'  grid(columns: {cols}, gutter: 6pt,')
+            for frame_path in frames:
+                self._emit(f'    image("{frame_path}"),')
+            self._emit('  ),')
+            if caption:
+                self._emit(f'  caption: [{caption}],')
+            self._emit(')')
+        else:
+            self._emit('#figure(')
+            self._emit(f'  constrained-image("{local_path}", width: 70%),')
+            if caption:
+                self._emit(f'  caption: [{caption}],')
+            self._emit(')')
         self._emit_blank()
 
     def _process_figure(self, node: Tag):
@@ -651,7 +667,7 @@ class HtmlToTypstConverter:
                 magnify.decompose()
             caption = self._inline_content(caption_div).strip()
 
-        self._emit_figure(local_path, caption)
+        self._emit_figure(local_path, caption, src)
 
     # --- Inline rendering (single source of truth for all inline elements) ---
 
