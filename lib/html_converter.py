@@ -621,9 +621,10 @@ class HtmlToTypstConverter:
                 caption = f"{self._escape(gallery_caption)}. {caption}"
             elif gallery_caption:
                 caption = self._escape(gallery_caption)
-            self._emit_figure(local_path, caption, src)
+            self._emit_figure(local_path, caption, src, width="50%")
 
-    def _emit_figure(self, local_path: str, caption: str = "", src: str = ""):
+    def _emit_figure(self, local_path: str, caption: str = "", src: str = "",
+                     width: str = "70%"):
         """Emit a Typst figure with a constrained image and optional caption.
         For animated GIFs, renders a grid of extracted frames instead."""
         gif_data = self.gif_frames.get(src) if src else None
@@ -642,7 +643,7 @@ class HtmlToTypstConverter:
             self._emit(')')
         else:
             self._emit('#figure(')
-            self._emit(f'  constrained-image("{local_path}", width: 70%),')
+            self._emit(f'  constrained-image("{local_path}", width: {width}),')
             if caption:
                 self._emit(f'  caption: [{caption}],')
             self._emit(')')
