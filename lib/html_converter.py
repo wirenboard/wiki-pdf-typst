@@ -621,12 +621,13 @@ class HtmlToTypstConverter:
                 caption = f"{self._escape(gallery_caption)}. {caption}"
             elif gallery_caption:
                 caption = self._escape(gallery_caption)
-            self._emit_figure(local_path, caption, src, width="50%")
+            self._emit_figure(local_path, caption, src, max_height="40%")
 
     def _emit_figure(self, local_path: str, caption: str = "", src: str = "",
-                     width: str = "70%"):
+                     max_height: str = ""):
         """Emit a Typst figure with a constrained image and optional caption.
-        For animated GIFs, renders a grid of extracted frames instead."""
+        For animated GIFs, renders a grid of extracted frames instead.
+        max_height: if set (e.g. "40%"), use gallery-constrained-image."""
         gif_data = self.gif_frames.get(src) if src else None
         self._emit_blank()
         if gif_data:
@@ -641,9 +642,15 @@ class HtmlToTypstConverter:
             if caption:
                 self._emit(f'  caption: [{caption}],')
             self._emit(')')
+        elif max_height:
+            self._emit('#figure(')
+            self._emit(f'  gallery-constrained-image("{local_path}", width: 70%, max-height: {max_height}),')
+            if caption:
+                self._emit(f'  caption: [{caption}],')
+            self._emit(')')
         else:
             self._emit('#figure(')
-            self._emit(f'  constrained-image("{local_path}", width: {width}),')
+            self._emit(f'  constrained-image("{local_path}", width: 70%),')
             if caption:
                 self._emit(f'  caption: [{caption}],')
             self._emit(')')

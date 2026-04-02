@@ -85,10 +85,26 @@
 // Helper: image constrained to max 50% page height for tall/portrait images
 #let constrained-image(path, ..args) = layout(size => {
   let max-h = size.height * 50%
-  // Resolve percentage width to concrete value for measure
   let named = args.named()
   let w = named.at("width", default: 100%)
   let concrete-w = size.width * w
+  let img-concrete = image(path, width: concrete-w)
+  let natural = measure(img-concrete)
+  if natural.height > max-h {
+    let ratio = max-h / natural.height
+    image(path, width: concrete-w * ratio, height: max-h)
+  } else {
+    image(path, width: concrete-w)
+  }
+})
+
+// Helper: gallery image — constrained by a custom max height (% of page)
+#let gallery-constrained-image(path, ..args) = layout(size => {
+  let named = args.named()
+  let w = named.at("width", default: 100%)
+  let mh = named.at("max-height", default: 40%)
+  let concrete-w = size.width * w
+  let max-h = size.height * mh
   let img-concrete = image(path, width: concrete-w)
   let natural = measure(img-concrete)
   if natural.height > max-h {
