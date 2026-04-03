@@ -55,21 +55,20 @@ def main():
             pages = [line.strip() for line in f if line.strip()]
         print(f"Read {len(pages)} pages from {args.pages_from}.", file=sys.stderr)
     else:
-        print("Querying pages with {{Wbpdf}}...", file=sys.stderr)
-        pages = bot.get_pages_with_template("Template:Wbpdf")
+        print("Querying pages with {{Wbincludes:pdf}}...", file=sys.stderr)
+        pages = bot.get_pages_with_template(TEMPLATE_TITLE)
         if not pages:
             # Fallback: embeddedin may be stale if wiki job queue isn't running.
             # Use grep-style search on wikitext via API.
             print("  embeddedin empty, trying search...", file=sys.stderr)
-            for term in ["Wbpdf", "Wbincludes:pdf"]:
-                resp = bot.session.get(bot.api_url, params={
-                    "action": "query", "list": "search",
-                    "srsearch": f'insource:"{{{{{term}}}}}"',
-                    "srnamespace": "0", "srlimit": "500", "format": "json",
-                }, timeout=30)
-                for r in resp.json()["query"]["search"]:
-                    if r["title"] not in pages:
-                        pages.append(r["title"])
+            resp = bot.session.get(bot.api_url, params={
+                "action": "query", "list": "search",
+                "srsearch": 'insource:"{{Wbincludes:pdf}}"',
+                "srnamespace": "0", "srlimit": "500", "format": "json",
+            }, timeout=30)
+            for r in resp.json()["query"]["search"]:
+                if r["title"] not in pages:
+                    pages.append(r["title"])
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
     if not pages:
