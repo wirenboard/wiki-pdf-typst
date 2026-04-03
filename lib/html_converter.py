@@ -47,7 +47,7 @@ _TEXT_COLOR_CLASSES = {
 
 # Elements to strip from the DOM before conversion
 _STRIP_IDS = {"toc", "catlinks"}
-_STRIP_CLASSES = {"mw-editsection", "noprint", "navbox", "hidden"}
+_STRIP_CLASSES = {"mw-editsection", "noprint", "navbox", "hidden", "pdf-download"}
 _STRIP_TAGS = {"script", "style"}
 
 # Regex for extracting image paths from generated figure lines
