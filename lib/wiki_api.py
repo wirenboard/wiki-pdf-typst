@@ -79,6 +79,41 @@ class WikiBot:
             raise RuntimeError(f"Upload failed: {data['error']['info']}")
         return data
 
+    def get_all_pages(self, namespace: int = 0) -> list[str]:
+        """Get all pages in a namespace."""
+        pages = []
+        params = {
+            "action": "query", "list": "allpages",
+            "apnamespace": str(namespace), "aplimit": "500",
+            "format": "json",
+        }
+        while True:
+            resp = self.session.get(self.api_url, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            for page in data["query"]["allpages"]:
+                pages.append(page["title"])
+            if "continue" in data:
+                params["apcontinue"] = data["continue"]["apcontinue"]
+            else:
+                break
+        return pages
+
+    def page_has_text(self, page_title: str, search_text: str) -> bool:
+        """Check if a page's raw wikitext contains a string."""
+        resp = self.session.get(self.api_url, params={
+            "action": "query", "titles": page_title,
+            "prop": "revisions", "rvprop": "content",
+            "rvslots": "main", "format": "json",
+        }, timeout=30)
+        resp.raise_for_status()
+        pages = resp.json()["query"]["pages"]
+        page = next(iter(pages.values()))
+        if "revisions" not in page:
+            return False
+        content = page["revisions"][0]["slots"]["main"]["*"]
+        return search_text in content
+
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:
         """Create or edit a wiki page."""
         token = self.get_csrf_token()
