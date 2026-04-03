@@ -31,6 +31,8 @@ def main():
                         help="Keep intermediate .typ files")
     parser.add_argument("--setup", action="store_true",
                         help="Create the Wbincludes:pdf template on the wiki")
+    parser.add_argument("--pages-from", metavar="FILE",
+                        help="Read page names from file (one per line) instead of querying wiki")
     args = parser.parse_args()
 
     bot = WikiBot()
@@ -48,8 +50,12 @@ def main():
     # Get page list
     if args.page:
         pages = [args.page]
+    elif args.pages_from:
+        with open(args.pages_from) as f:
+            pages = [line.strip() for line in f if line.strip()]
+        print(f"Read {len(pages)} pages from {args.pages_from}.", file=sys.stderr)
     else:
-        print("Querying pages...", file=sys.stderr)
+        print("Querying pages with {{Wbincludes:pdf}}...", file=sys.stderr)
         pages = bot.get_pages_with_template(TEMPLATE_TITLE)
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
