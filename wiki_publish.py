@@ -2,14 +2,15 @@
 """Query wiki for pages with {{Wbincludes:pdf}}, generate PDFs, upload to wiki."""
 
 import argparse
+import os
 import sys
 import time
 
 from lib.wiki_api import WikiBot
 from wiki2pdf import generate_pdf, BASE_URL
 
-BOT_USER = "EvgenyBoger@PdfUploader"
-BOT_PASS = "b0p67f45pf4gl4k2uq0eh8fgebre58ks"
+BOT_USER = os.environ.get("WIKI_BOT_USER", "EvgenyBoger@PdfUploader")
+BOT_PASS = os.environ.get("WIKI_BOT_PASS", "b0p67f45pf4gl4k2uq0eh8fgebre58ks")
 
 TEMPLATE_TITLE = "Wbincludes:pdf"
 TEMPLATE_WIKITEXT = """\
