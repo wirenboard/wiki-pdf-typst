@@ -71,6 +71,8 @@ def main():
             for r in resp.json()["query"]["search"]:
                 if r["title"] not in pages:
                     pages.append(r["title"])
+        # Filter to main namespace only (exclude template pages like Wbincludes:Pdf)
+        pages = [p for p in pages if ":" not in p]
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
     if not pages:
