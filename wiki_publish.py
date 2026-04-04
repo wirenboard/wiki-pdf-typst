@@ -144,6 +144,9 @@ def main():
     for page, err in failed:
         print(f"  FAIL: {page}: {err}", file=sys.stderr)
 
+    if failed:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
