@@ -11,8 +11,8 @@ from lib import fetcher, html_converter, typst_runner
 BASE_URL = "https://wiki.wirenboard.com"
 
 
-def generate_pdf(url: str, output_pdf: str = None, keep_typst: bool = False) -> str:
-    """Generate a PDF from a wiki URL. Returns path to the generated PDF."""
+def generate_pdf(url: str, output_pdf: str = None, keep_typst: bool = False) -> tuple[str, str]:
+    """Generate a PDF from a wiki URL. Returns (pdf_path, revid)."""
     base_url, page_name = fetcher.extract_page_name(url)
     print(f"Page: {page_name}", file=sys.stderr)
 
@@ -84,7 +84,7 @@ def generate_pdf(url: str, output_pdf: str = None, keep_typst: bool = False) -> 
     else:
         print(f"Typst source: {typ_file}", file=sys.stderr)
 
-    return output_pdf
+    return output_pdf, str(revid)
 
 
 def main():
@@ -98,7 +98,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        generate_pdf(args.url, args.output, args.keep_typst)
+        pdf_path, revid = generate_pdf(args.url, args.output, args.keep_typst)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

@@ -88,15 +88,16 @@ def main():
         url = f"{BASE_URL}/wiki/{page}"
         t0 = time.time()
         try:
-            pdf_path = generate_pdf(url, keep_typst=args.keep_typst)
+            pdf_path, revid = generate_pdf(url, keep_typst=args.keep_typst)
             elapsed = time.time() - t0
             print(f"  Generated ({elapsed:.1f}s)", file=sys.stderr)
 
             if not args.no_upload:
                 upload_name = f"{page}_manual.pdf"
                 print(f"  Uploading as {upload_name}...", file=sys.stderr)
-                bot.upload_file(upload_name, pdf_path,
-                                comment="Auto-generated PDF manual")
+                comment = (f"Auto-generated from revision {revid}. "
+                           f"https://github.com/wirenboard/wiki-pdf-typst")
+                bot.upload_file(upload_name, pdf_path, comment=comment)
                 print(f"  Uploaded.", file=sys.stderr)
 
             success.append(page)
