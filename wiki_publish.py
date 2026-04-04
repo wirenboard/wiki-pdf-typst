@@ -9,8 +9,8 @@ import time
 from lib.wiki_api import WikiBot
 from wiki2pdf import generate_pdf, BASE_URL
 
-BOT_USER = os.environ.get("WIKI_BOT_USER", "EvgenyBoger@PdfUploader")
-BOT_PASS = os.environ.get("WIKI_BOT_PASS", "b0p67f45pf4gl4k2uq0eh8fgebre58ks")
+BOT_USER = os.environ.get("WIKI_BOT_USER", "")
+BOT_PASS = os.environ.get("WIKI_BOT_PASS", "")
 
 TEMPLATE_TITLE = "Wbincludes:pdf"
 TEMPLATE_WIKITEXT = """\
@@ -37,6 +37,10 @@ def main():
     parser.add_argument("--force", action="store_true",
                         help="Regenerate even if PDF is up to date")
     args = parser.parse_args()
+
+    if not BOT_USER or not BOT_PASS:
+        print("Error: set WIKI_BOT_USER and WIKI_BOT_PASS environment variables", file=sys.stderr)
+        sys.exit(1)
 
     bot = WikiBot()
     print("Logging in...", file=sys.stderr)
@@ -72,8 +76,12 @@ def main():
             for r in resp.json()["query"]["search"]:
                 if r["title"] not in pages:
                     pages.append(r["title"])
-        # Filter to main namespace only (exclude template pages like Wbincludes:Pdf)
-        pages = [p for p in pages if ":" not in p]
+        # Filter to main namespace (exclude template/special pages)
+        _WIKI_NS = {"Talk", "User", "File", "Template", "Category", "Help",
+                     "MediaWiki", "Special", "Wbincludes", "Wbtables",
+                     "Участник", "Файл", "Шаблон", "Категория", "Служебная"}
+        pages = [p for p in pages
+                 if ":" not in p or p.split(":", 1)[0] not in _WIKI_NS]
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
     if not pages:
@@ -85,6 +93,14 @@ def main():
             print(f"  {page}")
         return
 
+    # Batch-fetch revisions for staleness check
+    page_revs = {}
+    pdf_revs = {}
+    if not args.force and not args.no_upload:
+        print("Checking for updates...", file=sys.stderr)
+        page_revs = bot.get_page_revisions(pages)
+        pdf_revs = bot.get_file_revisions([f"{p}_manual.pdf" for p in pages])
+
     success = []
     skipped = []
     failed = []
@@ -94,9 +110,8 @@ def main():
 
         # Check if PDF is already up to date
         if not args.force and not args.no_upload:
-            upload_name = f"{page}_manual.pdf"
-            current_rev = bot.get_page_revision(page)
-            pdf_rev = bot.get_file_revision(upload_name)
+            current_rev = page_revs.get(page)
+            pdf_rev = pdf_revs.get(f"{page}_manual.pdf")
             if current_rev and pdf_rev and current_rev == pdf_rev:
                 print(f"  Up to date (rev {current_rev})", file=sys.stderr)
                 skipped.append(page)

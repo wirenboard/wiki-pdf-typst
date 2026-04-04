@@ -115,37 +115,45 @@ class WikiBot:
         content = page["revisions"][0]["slots"]["main"]["*"]
         return search_text in content
 
-    def get_file_revision(self, filename: str) -> str | None:
-        """Get the source revision ID from the latest upload comment of a file.
+    def get_page_revisions(self, titles: list[str]) -> dict[str, str | None]:
+        """Batch-fetch current revision IDs for multiple pages."""
+        results = {t: None for t in titles}
+        for i in range(0, len(titles), 50):
+            batch = titles[i:i+50]
+            resp = self.session.get(self.api_url, params={
+                "action": "query", "titles": "|".join(batch),
+                "prop": "revisions", "rvprop": "ids",
+                "format": "json",
+            }, timeout=30)
+            resp.raise_for_status()
+            for page in resp.json()["query"]["pages"].values():
+                title = page.get("title", "")
+                if "revisions" in page:
+                    results[title] = str(page["revisions"][0]["revid"])
+        return results
 
-        Parses 'Auto-generated from revision NNNNN' from the comment.
-        Returns the revision string, or None if file doesn't exist or no revision found.
-        """
-        resp = self.session.get(self.api_url, params={
-            "action": "query", "titles": f"File:{filename}",
-            "prop": "imageinfo", "iiprop": "comment",
-            "format": "json",
-        }, timeout=15)
-        resp.raise_for_status()
-        page = next(iter(resp.json()["query"]["pages"].values()))
-        if "imageinfo" not in page:
-            return None
-        comment = page["imageinfo"][0].get("comment", "")
-        m = re.search(r"revision (\d+)", comment)
-        return m.group(1) if m else None
-
-    def get_page_revision(self, title: str) -> str | None:
-        """Get the current revision ID of a page."""
-        resp = self.session.get(self.api_url, params={
-            "action": "query", "titles": title,
-            "prop": "revisions", "rvprop": "ids",
-            "format": "json",
-        }, timeout=15)
-        resp.raise_for_status()
-        page = next(iter(resp.json()["query"]["pages"].values()))
-        if "revisions" not in page:
-            return None
-        return str(page["revisions"][0]["revid"])
+    def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
+        """Batch-fetch source revision IDs from upload comments of multiple files."""
+        results = {f: None for f in filenames}
+        titles = [f"File:{f}" for f in filenames]
+        for i in range(0, len(titles), 50):
+            batch = titles[i:i+50]
+            resp = self.session.get(self.api_url, params={
+                "action": "query", "titles": "|".join(batch),
+                "prop": "imageinfo", "iiprop": "comment",
+                "format": "json",
+            }, timeout=30)
+            resp.raise_for_status()
+            for page in resp.json()["query"]["pages"].values():
+                title = page.get("title", "")
+                # Strip "File:" / "Файл:" prefix to get filename
+                fname = title.split(":", 1)[-1] if ":" in title else title
+                if "imageinfo" in page:
+                    comment = page["imageinfo"][0].get("comment", "")
+                    m = re.search(r"Auto-generated from revision (\d+)", comment)
+                    if m:
+                        results[fname] = m.group(1)
+        return results
 
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:
         """Create or edit a wiki page."""
