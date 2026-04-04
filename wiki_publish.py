@@ -33,6 +33,8 @@ def main():
                         help="Create the Wbincludes:pdf template on the wiki")
     parser.add_argument("--pages-from", metavar="FILE",
                         help="Read page names from file (one per line) instead of querying wiki")
+    parser.add_argument("--force", action="store_true",
+                        help="Regenerate even if PDF is up to date")
     args = parser.parse_args()
 
     bot = WikiBot()
@@ -81,10 +83,22 @@ def main():
         return
 
     success = []
+    skipped = []
     failed = []
 
     for i, page in enumerate(pages):
         print(f"\n[{i+1}/{len(pages)}] {page}", file=sys.stderr, flush=True)
+
+        # Check if PDF is already up to date
+        if not args.force and not args.no_upload:
+            upload_name = f"{page}_manual.pdf"
+            current_rev = bot.get_page_revision(page)
+            pdf_rev = bot.get_file_revision(upload_name)
+            if current_rev and pdf_rev and current_rev == pdf_rev:
+                print(f"  Up to date (rev {current_rev})", file=sys.stderr)
+                skipped.append(page)
+                continue
+
         url = f"{BASE_URL}/wiki/{page}"
         t0 = time.time()
         try:
@@ -107,7 +121,7 @@ def main():
             print(f"  FAILED ({elapsed:.1f}s): {err}", file=sys.stderr)
             failed.append((page, err))
 
-    print(f"\n=== Results: {len(success)} OK, {len(failed)} failed ===",
+    print(f"\n=== Results: {len(success)} updated, {len(skipped)} up-to-date, {len(failed)} failed ===",
           file=sys.stderr)
     for page, err in failed:
         print(f"  FAIL: {page}: {err}", file=sys.stderr)

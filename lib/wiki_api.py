@@ -1,5 +1,6 @@
 """MediaWiki API client for bot operations (login, upload, page queries)."""
 
+import re
 import requests
 from lib.fetcher import VERIFY_SSL
 
@@ -113,6 +114,38 @@ class WikiBot:
             return False
         content = page["revisions"][0]["slots"]["main"]["*"]
         return search_text in content
+
+    def get_file_revision(self, filename: str) -> str | None:
+        """Get the source revision ID from the latest upload comment of a file.
+
+        Parses 'Auto-generated from revision NNNNN' from the comment.
+        Returns the revision string, or None if file doesn't exist or no revision found.
+        """
+        resp = self.session.get(self.api_url, params={
+            "action": "query", "titles": f"File:{filename}",
+            "prop": "imageinfo", "iiprop": "comment",
+            "format": "json",
+        }, timeout=15)
+        resp.raise_for_status()
+        page = next(iter(resp.json()["query"]["pages"].values()))
+        if "imageinfo" not in page:
+            return None
+        comment = page["imageinfo"][0].get("comment", "")
+        m = re.search(r"revision (\d+)", comment)
+        return m.group(1) if m else None
+
+    def get_page_revision(self, title: str) -> str | None:
+        """Get the current revision ID of a page."""
+        resp = self.session.get(self.api_url, params={
+            "action": "query", "titles": title,
+            "prop": "revisions", "rvprop": "ids",
+            "format": "json",
+        }, timeout=15)
+        resp.raise_for_status()
+        page = next(iter(resp.json()["query"]["pages"].values()))
+        if "revisions" not in page:
+            return None
+        return str(page["revisions"][0]["revid"])
 
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:
         """Create or edit a wiki page."""
