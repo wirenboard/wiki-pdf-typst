@@ -12,6 +12,11 @@ from wiki2pdf import generate_pdf, BASE_URL
 BOT_USER = os.environ.get("WIKI_BOT_USER", "")
 BOT_PASS = os.environ.get("WIKI_BOT_PASS", "")
 
+
+def sanitize_filename(page_name: str) -> str:
+    """Convert a wiki page name to a safe upload filename, matching MediaWiki's sanitization."""
+    return page_name.replace("/", "-") + "_manual.pdf"
+
 TEMPLATE_TITLE = "Wbincludes:pdf"
 TEMPLATE_WIKITEXT = """\
 <div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
@@ -99,7 +104,7 @@ def main():
     if not args.force and not args.no_upload:
         print("Checking for updates...", file=sys.stderr)
         page_revs = bot.get_page_revisions(pages)
-        pdf_revs = bot.get_file_revisions([f"{p}_manual.pdf" for p in pages])
+        pdf_revs = bot.get_file_revisions([sanitize_filename(p) for p in pages])
 
     success = []
     skipped = []
@@ -111,7 +116,7 @@ def main():
         # Check if PDF is already up to date
         if not args.force and not args.no_upload:
             current_rev = page_revs.get(page)
-            pdf_rev = pdf_revs.get(f"{page}_manual.pdf")
+            pdf_rev = pdf_revs.get(sanitize_filename(page))
             if current_rev and pdf_rev and current_rev == pdf_rev:
                 print(f"  Up to date (rev {current_rev})", file=sys.stderr)
                 skipped.append(page)
@@ -125,7 +130,7 @@ def main():
             print(f"  Generated ({elapsed:.1f}s)", file=sys.stderr)
 
             if not args.no_upload:
-                upload_name = f"{page}_manual.pdf"
+                upload_name = sanitize_filename(page)
                 print(f"  Uploading as {upload_name}...", file=sys.stderr)
                 comment = (f"Auto-generated from revision {revid}. "
                            f"https://github.com/wirenboard/wiki-pdf-typst")
