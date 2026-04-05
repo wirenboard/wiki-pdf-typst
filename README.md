@@ -1,16 +1,16 @@
-# wiki2pdf — Wiren Board Wiki to PDF Manual Generator
+# wiki2pdf — Генератор PDF-руководств из вики Wiren Board
 
-Converts [wiki.wirenboard.com](https://wiki.wirenboard.com) pages into professionally formatted PDF manuals using [Typst](https://typst.app/).
+Конвертирует страницы [wiki.wirenboard.com](https://wiki.wirenboard.com) в PDF-руководства с помощью [Typst](https://typst.app/).
 
-## How It Works
+## Как это работает
 
-1. Wiki editors add `{{Wbincludes:pdf}}` to device pages they want as PDFs
-2. A GitHub Actions workflow runs every 10 minutes, discovers those pages, and generates/uploads PDFs
-3. Each wiki page shows a download link to the latest PDF via the template
+1. Редактор вики добавляет `{{Wbincludes:pdf}}` на страницу устройства
+2. GitHub Actions каждые 10 минут находит такие страницы и генерирует/загружает PDF
+3. На странице вики появляется ссылка для скачивания PDF
 
-## Usage
+## Использование
 
-### Single page (local)
+### Генерация одной страницы (локально)
 
 ```bash
 python3 wiki2pdf.py "https://wiki.wirenboard.com/wiki/ZMCT205D"
@@ -18,59 +18,59 @@ python3 wiki2pdf.py "https://wiki.wirenboard.com/wiki/PageName" -o custom_output
 python3 wiki2pdf.py "https://wiki.wirenboard.com/wiki/PageName" --keep-typst
 ```
 
-### Publish all pages to wiki
+### Публикация всех страниц на вики
 
 ```bash
 export WIKI_BOT_USER="EvgenyBoger@PdfUploader"
 export WIKI_BOT_PASS="..."
-python3 wiki_publish.py              # discover pages, generate stale PDFs, upload
-python3 wiki_publish.py --dry-run    # list pages without generating
-python3 wiki_publish.py --force      # regenerate all, ignoring staleness
-python3 wiki_publish.py --page NAME  # process a single page
-python3 wiki_publish.py --no-upload  # generate locally without uploading
+python3 wiki_publish.py              # найти страницы, сгенерировать устаревшие PDF, загрузить
+python3 wiki_publish.py --dry-run    # только показать список страниц
+python3 wiki_publish.py --force      # перегенерировать все, игнорируя актуальность
+python3 wiki_publish.py --page NAME  # обработать одну страницу
+python3 wiki_publish.py --no-upload  # сгенерировать локально без загрузки
 ```
 
-### Add the template to wiki pages
+### Добавление шаблона на страницы вики
 
 ```bash
 export WIKI_BOT_USER="EvgenyBoger@PdfDev"
 export WIKI_BOT_PASS="..."
-python3 wiki_add_template.py "Page Name 1" "Page Name 2" ...
+python3 wiki_add_template.py "Название страницы 1" "Название страницы 2" ...
 ```
 
-This adds `{{Wbincludes:pdf}}` to each page and approves the revision (requires `approverevisions` right).
+Добавляет `{{Wbincludes:pdf}}` на каждую страницу и подтверждает ревизию (требуется право `approverevisions`).
 
 ## GitHub Actions
 
-The workflow (`.github/workflows/update-pdfs.yml`) runs in two modes:
+Рабочий процесс (`.github/workflows/update-pdfs.yml`) работает в двух режимах:
 
-### Scheduled (every 10 minutes)
-- Queries the wiki for all pages with `{{Wbincludes:pdf}}`
-- For each page, compares the current wiki revision with the revision stored in the uploaded PDF's comment
-- Skips pages that are already up to date
-- Generates and uploads only stale PDFs
+### По расписанию (каждые 10 минут)
+- Запрашивает у вики все страницы с `{{Wbincludes:pdf}}`
+- Для каждой страницы сравнивает текущую ревизию вики с ревизией, записанной в комментарии загруженного PDF
+- Пропускает страницы, которые уже актуальны
+- Генерирует и загружает только устаревшие PDF
 
-### On push to master
-- Triggers when code changes are pushed (converter, template, fonts, etc.)
-- Runs with `--force` to regenerate ALL PDFs, since the rendering may have changed
-- Ignores pushes to non-code files (README, .gitignore, utility scripts)
+### При пуше в master
+- Срабатывает при изменении кода (конвертер, шаблон, шрифты и т.д.)
+- Запускается с `--force` для перегенерации ВСЕХ PDF, так как отрисовка могла измениться
+- Игнорирует пуши в файлы, не влияющие на генерацию (README, .gitignore, вспомогательные скрипты)
 
-### Secrets required
-Set these in the repository settings at Settings → Secrets → Actions:
-- `WIKI_BOT_USER` — MediaWiki bot username (e.g. `EvgenyBoger@PdfUploader`)
-- `WIKI_BOT_PASS` — MediaWiki bot password
+### Необходимые секреты
+Настраиваются в репозитории: Settings → Secrets → Actions:
+- `WIKI_BOT_USER` — имя бота MediaWiki (например, `EvgenyBoger@PdfUploader`)
+- `WIKI_BOT_PASS` — пароль бота MediaWiki
 
-The bot account needs `upload`, `writeapi`, and `wb_editors` group membership on the wiki.
+Бот-аккаунт должен иметь права `upload`, `writeapi` и состоять в группе `wb_editors` на вики.
 
-## Setup (local development)
+## Установка (локальная разработка)
 
-Requires Python 3.11+ with dependencies:
+Требуется Python 3.11+ с зависимостями:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-The Typst binary should be at `bin/typst`:
+Бинарник Typst должен находиться в `bin/typst`:
 
 ```bash
 curl -sL https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz | tar xJ
@@ -78,117 +78,117 @@ mkdir -p bin
 mv typst-x86_64-unknown-linux-musl/typst bin/typst
 ```
 
-Custom fonts go in `fonts/` (PT Sans is included).
+Пользовательские шрифты размещаются в `fonts/` (PT Sans включён).
 
-## Project Structure
+## Структура проекта
 
 ```
-wiki2pdf.py              Single-page CLI converter
-wiki_publish.py          Batch: discover pages, generate PDFs, upload to wiki
-wiki_add_template.py     Add {{Wbincludes:pdf}} to pages and approve
-batch_generate.py        Local batch generation (hardcoded page list)
-audit_pdfs.py            Check generated PDFs for rendering issues
+wiki2pdf.py              Конвертация одной страницы (CLI)
+wiki_publish.py          Пакетная обработка: поиск страниц, генерация PDF, загрузка на вики
+wiki_add_template.py     Добавление {{Wbincludes:pdf}} на страницы и подтверждение
+batch_generate.py        Локальная пакетная генерация (фиксированный список страниц)
+audit_pdfs.py            Проверка сгенерированных PDF на ошибки рендеринга
 lib/
-  fetcher.py             MediaWiki API client, image downloader, section inliner
-  html_converter.py      HTML-to-Typst conversion engine
-  typst_runner.py        Typst compilation wrapper (with colspan auto-fix)
-  wiki_api.py            MediaWiki bot client (login, upload, page queries)
+  fetcher.py             Клиент API MediaWiki, загрузка изображений, встраивание разделов
+  html_converter.py      Движок конвертации HTML → Typst
+  typst_runner.py        Обёртка компиляции Typst (с автоисправлением colspan)
+  wiki_api.py            Бот-клиент MediaWiki (авторизация, загрузка, запросы страниц)
 templates/
-  manual.typ             Typst template (layout, styles, cover page, TOC)
-fonts/                   Font files (PT Sans)
+  manual.typ             Шаблон Typst (макет, стили, обложка, оглавление)
+fonts/                   Файлы шрифтов (PT Sans)
 .github/workflows/
-  update-pdfs.yml        GitHub Actions workflow
+  update-pdfs.yml        Рабочий процесс GitHub Actions
 ```
 
-## Architecture Decisions
+## Архитектурные решения
 
-### Data source: MediaWiki `action=parse` API (not raw wikitext)
+### Источник данных: MediaWiki API `action=parse` (не сырой викитекст)
 
-The wiki uses many `{{Wbincludes:...}}` transclusion templates with parameters (e.g. `note=true`, `no_description=true`). Parsing raw wikitext would require reimplementing the MediaWiki template engine. The `action=parse` API returns fully rendered HTML with all templates expanded, conditional content resolved, and `class="hidden"` applied to suppressed elements.
+Вики использует множество шаблонов `{{Wbincludes:...}}` с параметрами (например, `note=true`, `no_description=true`). Разбор сырого викитекста потребовал бы реализации шаблонизатора MediaWiki. API `action=parse` возвращает полностью отрендеренный HTML со всеми раскрытыми шаблонами, вычисленными условиями и применённым `class="hidden"` к скрытым элементам.
 
-### HTML parsing (not wikitext parsing)
+### Разбор HTML (не викитекста)
 
-BeautifulSoup with `html.parser` is used to walk the rendered DOM. This is more reliable than wikitext parsing because:
-- Templates are already evaluated with their parameters
-- HTML structure is predictable (`<table class="wikitable">`, `<div class="thumb">`, `<span class="note">`, etc.)
-- CSS classes like `hidden`, `noprint`, `mw-editsection` can be stripped in a single pass
+BeautifulSoup с `html.parser` используется для обхода DOM. Это надёжнее разбора викитекста:
+- Шаблоны уже вычислены с их параметрами
+- Структура HTML предсказуема (`<table class="wikitable">`, `<div class="thumb">`, `<span class="note">` и т.д.)
+- CSS-классы `hidden`, `noprint`, `mw-editsection` удаляются за один проход
 
-### Section inlining
+### Встраивание разделов
 
-Many wiki pages have sections that are just a link to a sub-page (e.g. "Ревизии устройства" links to a separate revisions page). The fetcher detects these single-link sections and inlines the linked page's content:
-- Headings in sub-content are demoted relative to the parent heading level
-- Back-link paragraphs ("Перейти на страницу устройства") are removed
-- Links to inlined pages are rewritten as local anchor references (`#fragment`)
-- MediaWiki namespace prefixes (`File:`, `Special:`, `Template:`, etc.) are excluded from inlining
+Многие страницы вики содержат разделы, которые являются просто ссылкой на подстраницу (например, «Ревизии устройства» ссылается на отдельную страницу). Фетчер обнаруживает такие разделы с единственной ссылкой и встраивает содержимое связанной страницы:
+- Заголовки подконтента понижаются относительно уровня родительского заголовка
+- Обратные ссылки («Перейти на страницу устройства») удаляются
+- Ссылки на встроенные страницы переписываются как локальные якоря (`#fragment`)
+- Пространства имён MediaWiki (`File:`, `Special:`, `Template:` и т.д.) исключаются из встраивания
 
-### Staleness check
+### Проверка актуальности
 
-When publishing, the script compares each page's current wiki revision ID against the revision stored in the uploaded PDF's file comment (`"Auto-generated from revision NNNNN"`). Pages are skipped if they match. Revision checks are batched (up to 50 pages per API call).
+При публикации скрипт сравнивает текущую ревизию страницы вики с ревизией, сохранённой в комментарии загруженного PDF (`"Auto-generated from revision NNNNN"`). Страницы пропускаются, если ревизии совпадают. Проверки ревизий выполняются пакетно (до 50 страниц за один API-запрос).
 
-### Typst (not LaTeX, not Pandoc)
+### Typst (не LaTeX, не Pandoc)
 
-Typst was chosen for:
-- Native PDF output with good typography
-- Simple markup language that maps well from HTML
-- Built-in support for tables with colspan/rowspan, figure numbering, page flipping
-- `layout()` function for measuring and constraining image sizes
-- `#page(flipped: true)` for landscape pages
+Typst выбран за:
+- Нативный вывод в PDF с хорошей типографикой
+- Простой язык разметки, хорошо отображающийся из HTML
+- Встроенная поддержка таблиц с colspan/rowspan, нумерации рисунков, переворота страниц
+- Функция `layout()` для измерения и ограничения размеров изображений
+- `#page(flipped: true)` для альбомных страниц
 
-### Image handling
+### Обработка изображений
 
-- Images are downloaded in parallel (ThreadPoolExecutor, 8 workers)
-- Full-resolution images are preferred over thumbnails (thumbnail URLs are converted by stripping `/thumb/` path segment)
-- Portrait images (height > 1.2x width) are detected by reading PNG/JPEG headers and automatically grouped into 2-column grids when consecutive
-- The `constrained-image` Typst function uses `layout()` + `measure()` to cap tall images at 50% of page height while preserving aspect ratio
-- Gallery images use a stricter height limit (40%) so two fit per page
-- The first content image is extracted for the cover page
+- Изображения загружаются параллельно (ThreadPoolExecutor, 8 потоков)
+- Предпочитаются полноразмерные изображения вместо миниатюр (URL миниатюр конвертируются удалением сегмента `/thumb/`)
+- Портретные изображения (высота > 1.2× ширины) определяются по заголовкам PNG/JPEG и автоматически группируются в 2-колоночные сетки при последовательном расположении
+- Функция Typst `constrained-image` использует `layout()` + `measure()` для ограничения высоты изображений до 50% высоты страницы с сохранением пропорций
+- Изображения галерей используют более строгое ограничение высоты (40%), чтобы два помещались на странице
+- Первое изображение извлекается для обложки
 
-### Animated GIFs
+### Анимированные GIF
 
-Animated GIFs are extracted into up to 8 visually diverse frames using greedy farthest-point sampling. Short animations (< 4 frames) show 2 full cycles. Each frame is captioned with its timestamp. Frames are rendered in a 4-column grid within a figure, or inline in table cells at matching size with static images.
+Из анимированных GIF извлекается до 8 визуально различных кадров методом жадного выбора наиболее удалённых точек. Короткие анимации (< 4 кадров) показывают 2 полных цикла. Каждый кадр подписан временной меткой. Кадры отображаются в сетке из 4 колонок внутри рисунка или инлайн в ячейках таблиц с размером, совпадающим со статичными изображениями.
 
-### Table layout
+### Таблицы
 
-Column count is determined from the header row (or mode of all rows) to avoid inflation from legend rows with oversized colspans. Layout mode depends on content width:
-- **Normal**: tables with < 5 columns
-- **Compact**: 5-7 columns, reduced font size (8.5pt)
-- **Landscape**: 8+ columns with wide content (max row text > 80 chars) or 12+ columns; uses `#page(flipped: true)` with 7pt font
+Количество колонок определяется по строке заголовка (или моде всех строк), чтобы избежать завышения из-за строк легенды с увеличенными colspan. Режим отображения зависит от ширины содержимого:
+- **Обычный**: таблицы с < 5 колонками
+- **Компактный**: 5–7 колонок, уменьшенный шрифт (8.5pt)
+- **Альбомный**: 8+ колонок с широким содержимым (максимальный текст строки > 80 символов) или 12+ колонок; `#page(flipped: true)` с шрифтом 7pt
 
-When a heading immediately precedes a landscape table, it is pulled inside the flipped page block.
+Когда заголовок непосредственно предшествует альбомной таблице, он перемещается внутрь перевёрнутой страницы.
 
-Tables with `<caption>` are wrapped in `#figure(kind: table)` for auto-numbered captions. Cell background colors are resolved from both inline styles and CSS classes (`cell-green`, `cell-red`, `cell-yellow`).
+Таблицы с `<caption>` оборачиваются в `#figure(kind: table)` для автонумерованных подписей. Цвета фона ячеек разрешаются из инлайн-стилей и CSS-классов (`cell-green`, `cell-red`, `cell-yellow`).
 
-The Typst compiler auto-fixes colspan overflow errors by halving the offending value and retrying (up to 20 times).
+Компилятор Typst автоматически исправляет ошибки переполнения colspan, уменьшая значение вдвое и повторяя попытку (до 20 раз).
 
-### Gallery handling
+### Галереи
 
-MediaWiki `<ul class="gallery">` elements are converted to individual figures with a gallery-level caption prepended (e.g. "Обновление прошивки. Выбор файла"). Gallery images use a height constraint (40% of page) instead of a width constraint for compact layout.
+Элементы `<ul class="gallery">` MediaWiki конвертируются в отдельные рисунки с подписью галереи (например, «Обновление прошивки. Выбор файла»). Изображения галерей ограничены по высоте (40% страницы) для компактной компоновки.
 
-### Note/warning blocks
+### Блоки примечаний и предупреждений
 
-Two detection patterns:
-- `<span class="note note-note">` / `<span class="note note-warning">` — semantic class-based
-- `<div style="border:...;background:...">` — CSS heuristic for template-generated callout boxes
+Два паттерна обнаружения:
+- `<span class="note note-note">` / `<span class="note note-warning">` — семантические классы
+- `<div style="border:...;background:...">` — эвристика CSS для блоков шаблонов
 
-Both render as styled callout blocks with colored left border.
+Оба отображаются как стилизованные блоки с цветной левой границей.
 
-### Text and cell color support
+### Цвета текста и ячеек
 
-Colors are resolved from multiple sources:
-- CSS classes: `text-green`, `text-red`, `text-orange` for text; `cell-green`, `cell-red`, `cell-yellow` for cell backgrounds
-- Inline styles: `style="color: #xxx"` and `style="background-color: #xxx"`
+Цвета разрешаются из нескольких источников:
+- CSS-классы: `text-green`, `text-red`, `text-orange` для текста; `cell-green`, `cell-red`, `cell-yellow` для фона ячеек
+- Инлайн-стили: `style="color: #xxx"` и `style="background-color: #xxx"`
 
-### Hidden content
+### Скрытый контент
 
-Elements with `class="hidden"` or `class="noprint"` are stripped. This respects MediaWiki template parameters like `no_description=true` and the `{{Wbincludes:pdf}}` download block itself.
+Элементы с `class="hidden"` или `class="noprint"` удаляются. Это учитывает параметры шаблонов MediaWiki (например, `no_description=true`) и сам блок загрузки `{{Wbincludes:pdf}}`.
 
-### Cover page and metadata
+### Обложка и метаданные
 
-- First content image is extracted and placed on the cover page
-- Wiki page URL is shown and clickable
-- Revision ID and timestamp from the wiki API
-- Page header on every page links back to the wiki article
+- Первое изображение извлекается и размещается на обложке
+- URL страницы вики отображается и кликабелен
+- ID ревизии и временная метка из API вики
+- Заголовок на каждой странице ссылается на статью вики
 
-### Font
+### Шрифт
 
-PT Sans (Paratype) — free sans-serif with full Cyrillic support. Custom fonts can be added to `fonts/` and referenced in `templates/manual.typ`.
+PT Sans (Paratype) — свободный шрифт без засечек с полной поддержкой кириллицы. Пользовательские шрифты можно добавить в `fonts/` и указать в `templates/manual.typ`.
