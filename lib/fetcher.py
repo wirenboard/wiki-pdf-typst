@@ -122,8 +122,8 @@ def inline_link_sections(html: str, base_url: str) -> str:
         for n in content_nodes:
             n.decompose()
 
-        # Remove back-link paragraphs: short <p> with just a wiki link
-        # (e.g. "Перейти на страницу устройства", "Документация ... по ссылке")
+        # Remove back-link paragraphs: short <p> that is almost entirely a link
+        # (e.g. "Перейти на страницу устройства")
         for p in list(sub_content.find_all("p")):
             p_links = [a for a in p.find_all("a")
                        if (a.get("href", "") or "").startswith("/wiki/")
@@ -131,11 +131,10 @@ def inline_link_sections(html: str, base_url: str) -> str:
             if not p_links:
                 continue
             text = p.get_text().strip()
-            # If paragraph is short and dominated by the link, it's a back-link
-            if len(text) < 120:
-                link_text = " ".join(a.get_text().strip() for a in p_links)
-                if len(link_text) > len(text) * 0.4:
-                    p.decompose()
+            link_text = " ".join(a.get_text().strip() for a in p_links)
+            # Only remove if the paragraph is very short and almost entirely a link
+            if len(text) < 80 and len(link_text) > len(text) * 0.8:
+                p.decompose()
 
         # Demote headings in sub-content so they nest under the parent heading.
         # E.g. parent is <h2>: sub-content's top-level headings become <h3>.

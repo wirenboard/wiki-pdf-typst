@@ -31,6 +31,16 @@ _NAMED_COLORS = {
     "lightcoral": "#f08080", "white": "#ffffff",
 }
 
+# CSS class → background color mapping for MediaWiki cell-color classes
+_CELL_COLOR_CLASSES = {
+    "cell-green": "#90ee90",
+    "cell-red": "#f08080",
+    "cell-yellow": "#ffffe0",
+    "cell-blue": "#add8e6",
+    "cell-gray": "#d3d3d3",
+    "cell-grey": "#d3d3d3",
+}
+
 # CSS class → color mapping for MediaWiki text-color classes
 _TEXT_COLOR_CLASSES = {
     "text-green": "#00aa00",
@@ -422,7 +432,10 @@ class HtmlToTypstConverter:
             self.in_table = old_in_table
             return
 
-        num_cols = 0
+        # Count columns per row. Use the header row (or most common width)
+        # as the definitive column count — legend/footer rows sometimes have
+        # inflated colspans that shouldn't determine the table width.
+        row_col_counts = []
         max_row_text = 0
         for row in rows:
             cols_in_row = 0
@@ -430,8 +443,17 @@ class HtmlToTypstConverter:
             for cell in row.find_all(["th", "td"], recursive=False):
                 cols_in_row += int(cell.get("colspan", 1))
                 row_text += len(cell.get_text().strip())
-            num_cols = max(num_cols, cols_in_row)
+            row_col_counts.append(cols_in_row)
             max_row_text = max(max_row_text, row_text)
+
+        # Prefer header row column count; fall back to most common count
+        first_row_cells = rows[0].find_all(["th", "td"], recursive=False)
+        if first_row_cells and all(c.name == "th" for c in first_row_cells):
+            num_cols = sum(int(c.get("colspan", 1)) for c in first_row_cells)
+        else:
+            # Use the most common row width (mode)
+            from collections import Counter
+            num_cols = Counter(row_col_counts).most_common(1)[0][0]
 
         if num_cols == 0:
             self.in_table = old_in_table
@@ -507,8 +529,8 @@ class HtmlToTypstConverter:
 
                 # Fix colspan overflow from rowspan-occupied columns
                 if len(cells) == 1 and colspan >= num_cols:
-                    # Single-cell row spanning all: drop colspan
-                    colspan = 1
+                    # Single-cell row spanning all: clamp to exactly num_cols
+                    colspan = num_cols
                 elif row_explicit > num_cols and colspan > 1:
                     # Row total exceeds table — scale down proportionally
                     colspan = max(1, colspan * num_cols // row_explicit)
@@ -823,6 +845,11 @@ class HtmlToTypstConverter:
         m = _RE_BG_NAMED.search(style)
         if m:
             return _NAMED_COLORS.get(m.group(1).lower())
+        # Check CSS classes (cell-green, cell-red, etc.)
+        for cls in (node.get("class") or []):
+            color = _CELL_COLOR_CLASSES.get(cls)
+            if color:
+                return color
         return None
 
     def _extract_text_color(self, style: str) -> str | None:

@@ -3,6 +3,14 @@ name: Update Wiki PDFs
 on:
   schedule:
     - cron: '*/10 * * * *'  # Every 10 minutes
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+      - 'batch_generate.py'
+      - 'audit_pdfs.py'
+      - 'wiki_add_template.py'
   workflow_dispatch:  # Manual trigger
 
 jobs:
@@ -32,4 +40,10 @@ jobs:
         env:
           WIKI_BOT_USER: ${{ secrets.WIKI_BOT_USER }}
           WIKI_BOT_PASS: ${{ secrets.WIKI_BOT_PASS }}
-        run: python3 wiki_publish.py
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Code push detected — regenerating all PDFs"
+            python3 wiki_publish.py --force
+          else
+            python3 wiki_publish.py
+          fi
