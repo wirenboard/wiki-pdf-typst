@@ -724,10 +724,10 @@ class HtmlToTypstConverter:
 
         if name in ("b", "strong"):
             content = self._inline_content(tag).strip()
-            return f"#strong[{content}]" if content else ""
+            return f"#strong[{content}]\u200b" if content else ""
         elif name in ("i", "em"):
             content = self._inline_content(tag).strip()
-            return f"#emph[{content}]" if content else ""
+            return f"#emph[{content}]\u200b" if content else ""
         elif name == "code" and not self.in_code:
             text = tag.get_text()
             return f"`{text}`" if text else ""
