@@ -135,6 +135,8 @@ class WikiBot:
     def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
         """Batch-fetch source revision IDs from upload comments of multiple files."""
         results = {f: None for f in filenames}
+        # Build a lookup: normalized name -> original filename
+        norm_lookup = {f.replace("_", " "): f for f in filenames}
         titles = [f"File:{f}" for f in filenames]
         for i in range(0, len(titles), 50):
             batch = titles[i:i+50]
@@ -146,13 +148,14 @@ class WikiBot:
             resp.raise_for_status()
             for page in resp.json()["query"]["pages"].values():
                 title = page.get("title", "")
-                # Strip "File:" / "Файл:" prefix to get filename
+                # Strip namespace prefix (File: / Файл:) and match back
                 fname = title.split(":", 1)[-1] if ":" in title else title
-                if "imageinfo" in page:
+                original = norm_lookup.get(fname) or norm_lookup.get(fname.replace(" ", "_"))
+                if original and "imageinfo" in page:
                     comment = page["imageinfo"][0].get("comment", "")
                     m = re.search(r"Auto-generated from revision (\d+)", comment)
                     if m:
-                        results[fname] = m.group(1)
+                        results[original] = m.group(1)
         return results
 
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:
