@@ -16,9 +16,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Set to False to skip SSL verification (e.g. missing CA certs in container)
 VERIFY_SSL = False
 
-# MediaWiki namespace prefixes to skip when detecting internal wiki links
+# Namespaces whose pages are never inlined as article content, by canonical name.
+# Which namespaces to skip is a deliberate choice; how they are spelled is not, so the
+# spellings are resolved from the wiki — see _skip_prefixes(). Content namespaces such
+# as Wbincludes stay inlinable: errata blocks are pulled in that way.
+_SKIP_NAMESPACES = ("Special", "Media", "File", "User", "Category", "Template")
+
+# Used only when the wiki cannot be asked for the spellings.
 _SKIP_PREFIXES = ("Special:", "Файл:", "File:", "User:", "Участник:",
                   "Category:", "Категория:", "Template:", "Шаблон:")
+
+_NS_PREFIX_CACHE: dict[str, tuple[str, ...]] = {}
 
 
 def fetch_page(base_url: str, page_name: str) -> dict:
@@ -67,6 +75,66 @@ def fetch_page(base_url: str, page_name: str) -> dict:
     return {"html": html, "title": title, "revid": revid, "revtimestamp": revtimestamp}
 
 
+def _skip_prefixes(base_url: str) -> tuple[str, ...]:
+    """Every spelling of the _SKIP_NAMESPACES prefixes that this wiki accepts.
+
+    Asked once per run rather than listed by hand: each namespace has a canonical name,
+    a localized one and often aliases — Special is also Служебная, File is also Файл and
+    Изображение — and a link may use any of them.
+    """
+    if base_url not in _NS_PREFIX_CACHE:
+        try:
+            resp = requests.get(f"{base_url}/wiki/api.php", params={
+                "action": "query", "meta": "siteinfo",
+                "siprop": "namespaces|namespacealiases", "format": "json",
+            }, timeout=15, verify=VERIFY_SSL)
+            resp.raise_for_status()
+            data = resp.json()["query"]
+            skip_ids = {ns["id"] for ns in data["namespaces"].values()
+                        if ns.get("canonical") in _SKIP_NAMESPACES}
+            prefixes = {f"{ns[key]}:" for ns in data["namespaces"].values()
+                        if ns["id"] in skip_ids
+                        for key in ("*", "canonical") if ns.get(key)}
+            prefixes |= {f"{alias['*']}:" for alias in data.get("namespacealiases", [])
+                         if alias["id"] in skip_ids and alias.get("*")}
+        except Exception as e:
+            print(f"  Warning: namespace names unavailable ({e}); using fallback", flush=True)
+            prefixes = set(_SKIP_PREFIXES)
+        _NS_PREFIX_CACHE[base_url] = tuple(prefixes)
+    return _NS_PREFIX_CACHE[base_url]
+
+
+def _href_to_page(href: str, base_url: str) -> str | None:
+    """Article title an internal wiki link points at, or None if it is not one.
+
+    Links come in two shapes: /wiki/Page_Name and /wiki/index.php?title=Page_Name&...
+    Approved Revs rewrites image links into the second shape, and both percent-encode
+    non-ASCII titles. Matching namespace prefixes against the raw href therefore let
+    File: and Служебная: links through as articles, and the href was then handed to the
+    API as a page title, which it rejected as a bad title.
+    """
+    if not href.startswith("/wiki/"):
+        return None
+    parsed = urlparse(href)
+    query = parse_qs(parsed.query)
+    if "title" in query:
+        # Any parameter besides title= addresses a view of the page, not the page:
+        # action=edit, oldid=, filetimestamp= and so on.
+        if set(query) - {"title"}:
+            return None
+        title = query["title"][0]
+    elif parsed.query:
+        return None
+    else:
+        path = unquote(parsed.path)
+        marker = "/wiki/index.php/" if "/wiki/index.php/" in path else "/wiki/"
+        title = path.split(marker, 1)[1]
+    title = title.strip()
+    if not title or any(title.startswith(p) for p in _skip_prefixes(base_url)):
+        return None
+    return title
+
+
 def inline_link_sections(html: str, base_url: str) -> str:
     """Replace sections that only contain a link to another wiki page
     with the content of that page."""
@@ -96,14 +164,14 @@ def inline_link_sections(html: str, base_url: str) -> str:
         for n in content_nodes:
             if hasattr(n, "find_all"):
                 for a in n.find_all("a"):
-                    href = a.get("href", "")
-                    if href.startswith("/wiki/") and "action=" not in href and not any(href.split("/wiki/", 1)[-1].startswith(p) for p in _SKIP_PREFIXES):
-                        links.append(href)
+                    page = _href_to_page(a.get("href", "") or "", base_url)
+                    if page:
+                        links.append(page)
 
         if len(links) != 1:
             continue
         # This section has exactly one internal wiki link — inline it
-        linked_page = links[0].split("/wiki/", 1)[-1]
+        linked_page = links[0]
         print(f"  Inlining: {linked_page}", flush=True)
         try:
             page_data = fetch_page(base_url, linked_page)
@@ -158,17 +226,18 @@ def inline_link_sections(html: str, base_url: str) -> str:
         changed = True
 
     if changed:
-        # Rewrite links to inlined pages into local anchor links
+        # Rewrite links to inlined pages: their content is now in this document.
+        # Matched on the page a link resolves to, not on a substring of the href —
+        # "/wiki/WB-MIO" is also a substring of "/wiki/WB-MIO_Revisions", so the old
+        # test stripped links to neighbouring pages that were never inlined.
         for a in soup.find_all("a"):
             href = a.get("href", "") or ""
-            for page in inlined_pages:
-                if f"/wiki/{page}" in href:
-                    if "#" in href:
-                        fragment = href.split("#", 1)[1]
-                        a["href"] = f"#{fragment}"
-                    else:
-                        a.replace_with(a.get_text())
-                    break
+            if _href_to_page(href, base_url) in inlined_pages:
+                fragment = urlparse(href).fragment
+                if fragment:
+                    a["href"] = f"#{fragment}"
+                else:
+                    a.replace_with(a.get_text())
         return str(soup)
     return html
 
