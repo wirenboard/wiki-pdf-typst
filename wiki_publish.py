@@ -41,7 +41,8 @@ def main():
     parser.add_argument("--keep-typst", action="store_true",
                         help="Keep intermediate .typ files")
     parser.add_argument("--setup", action="store_true",
-                        help="Create the Wbincludes:pdf template on the wiki")
+                        help="Create the Wbincludes:pdf template on a fresh wiki; "
+                             "refuses to overwrite an existing one")
     parser.add_argument("--pages-from", metavar="FILE",
                         help="Read page names from file (one per line) instead of querying wiki")
     parser.add_argument("--force", action="store_true",
@@ -59,8 +60,14 @@ def main():
 
     if args.setup:
         print("Creating template...", file=sys.stderr)
-        bot.edit_page(TEMPLATE_TITLE, TEMPLATE_WIKITEXT,
-                      summary="Create PDF download template")
+        try:
+            bot.edit_page(TEMPLATE_TITLE, TEMPLATE_WIKITEXT,
+                          summary="Create PDF download template",
+                          createonly=True)
+        except RuntimeError as e:
+            sys.exit(f"{e}\n{TEMPLATE_TITLE} already exists. Edit it on the wiki "
+                     f"instead; the text in this script is a bootstrap stub, not "
+                     f"a copy of what is live.")
         print(f"Template {TEMPLATE_TITLE} created.", file=sys.stderr)
         return
 
