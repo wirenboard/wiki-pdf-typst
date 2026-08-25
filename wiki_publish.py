@@ -2,6 +2,7 @@
 """Query wiki for pages with {{Wbincludes:pdf}}, generate PDFs, upload to wiki."""
 
 import argparse
+import hashlib
 import os
 import sys
 import time
@@ -22,6 +23,15 @@ TEMPLATE_WIKITEXT = """\
 <div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
 &#x1F4CB; '''[[Media:{{PAGENAME}}_manual.pdf|Скачать PDF-версию руководства]]'''
 </div>"""
+
+
+def file_sha1(path: str) -> str:
+    """SHA-1 of a file's contents, in the same hex form the wiki reports for uploads."""
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
@@ -101,13 +111,23 @@ def main():
     # Batch-fetch revisions for staleness check
     page_revs = {}
     pdf_revs = {}
-    if not args.force and not args.no_upload:
-        print("Checking for updates...", file=sys.stderr)
-        page_revs = bot.get_page_revisions(pages)
-        pdf_revs = bot.get_file_revisions([sanitize_filename(p) for p in pages])
+    pdf_sha1s = {}
+    if not args.no_upload:
+        upload_names = [sanitize_filename(p) for p in pages]
+        if args.force:
+            # --force means regenerate, not re-store. Output is reproducible, so a
+            # PDF that matches the stored one is not uploaded again: an unchanged
+            # page would otherwise cost a full new file version on every push.
+            print("Fetching stored PDF hashes...", file=sys.stderr)
+            pdf_sha1s = bot.get_file_sha1s(upload_names)
+        else:
+            print("Checking for updates...", file=sys.stderr)
+            page_revs = bot.get_page_revisions(pages)
+            pdf_revs = bot.get_file_revisions(upload_names)
 
     success = []
     skipped = []
+    unchanged = []
     failed = []
 
     for i, page in enumerate(pages):
@@ -131,6 +151,10 @@ def main():
 
             if not args.no_upload:
                 upload_name = sanitize_filename(page)
+                if pdf_sha1s.get(upload_name) == file_sha1(pdf_path):
+                    print("  Identical to stored file, upload skipped", file=sys.stderr)
+                    unchanged.append(page)
+                    continue
                 print(f"  Uploading as {upload_name}...", file=sys.stderr)
                 comment = (f"Auto-generated from revision {revid}. "
                            f"https://github.com/wirenboard/wiki-pdf-typst")
@@ -144,7 +168,8 @@ def main():
             print(f"  FAILED ({elapsed:.1f}s): {err}", file=sys.stderr)
             failed.append((page, err))
 
-    print(f"\n=== Results: {len(success)} updated, {len(skipped)} up-to-date, {len(failed)} failed ===",
+    print(f"\n=== Results: {len(success)} updated, {len(skipped)} up-to-date, "
+          f"{len(unchanged)} regenerated but unchanged, {len(failed)} failed ===",
           file=sys.stderr)
     for page, err in failed:
         print(f"  FAIL: {page}: {err}", file=sys.stderr)

@@ -52,6 +52,7 @@ def generate_pdf(url: str, output_pdf: str = None, keep_typst: bool = False) -> 
     escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
     wiki_url = f"{base_url}/wiki/{page_name}"
     rev_date = ""
+    rev_date_iso = revtimestamp[:10] if revtimestamp else ""
     if revtimestamp:
         rev_date = revtimestamp[:10].split("-")
         rev_date = f"{rev_date[2]}.{rev_date[1]}.{rev_date[0]}"
@@ -67,6 +68,8 @@ def generate_pdf(url: str, output_pdf: str = None, keep_typst: bool = False) -> 
         '#let doc-url = ""', f'#let doc-url = "{wiki_url}"'
     ).replace(
         '#let doc-revid = ""', f'#let doc-revid = "{revid}"'
+    ).replace(
+        '#let doc-date-iso = ""', f'#let doc-date-iso = "{rev_date_iso}"'
     )
 
     with open(typ_file, "w") as f:

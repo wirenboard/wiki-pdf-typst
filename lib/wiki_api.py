@@ -132,9 +132,8 @@ class WikiBot:
                     results[title] = str(page["revisions"][0]["revid"])
         return results
 
-    def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
-        """Batch-fetch source revision IDs from upload comments of multiple files."""
-        results = {f: None for f in filenames}
+    def _imageinfo(self, filenames: list[str], iiprop: str):
+        """Yield (requested filename, imageinfo of current version) for files that exist."""
         # Build a lookup: normalized name -> original filename
         norm_lookup = {f.replace("_", " "): f for f in filenames}
         titles = [f"File:{f}" for f in filenames]
@@ -142,7 +141,7 @@ class WikiBot:
             batch = titles[i:i+50]
             resp = self.session.get(self.api_url, params={
                 "action": "query", "titles": "|".join(batch),
-                "prop": "imageinfo", "iiprop": "comment",
+                "prop": "imageinfo", "iiprop": iiprop,
                 "format": "json",
             }, timeout=30)
             resp.raise_for_status()
@@ -152,10 +151,22 @@ class WikiBot:
                 fname = title.split(":", 1)[-1] if ":" in title else title
                 original = norm_lookup.get(fname) or norm_lookup.get(fname.replace(" ", "_"))
                 if original and "imageinfo" in page:
-                    comment = page["imageinfo"][0].get("comment", "")
-                    m = re.search(r"Auto-generated from revision (\d+)", comment)
-                    if m:
-                        results[original] = m.group(1)
+                    yield original, page["imageinfo"][0]
+
+    def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
+        """Batch-fetch source revision IDs from upload comments of multiple files."""
+        results = {f: None for f in filenames}
+        for name, info in self._imageinfo(filenames, "comment"):
+            m = re.search(r"Auto-generated from revision (\d+)", info.get("comment", ""))
+            if m:
+                results[name] = m.group(1)
+        return results
+
+    def get_file_sha1s(self, filenames: list[str]) -> dict[str, str | None]:
+        """Batch-fetch the SHA-1 of each file's current version (hex, as sha1sum reports)."""
+        results = {f: None for f in filenames}
+        for name, info in self._imageinfo(filenames, "sha1"):
+            results[name] = info.get("sha1")
         return results
 
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:
