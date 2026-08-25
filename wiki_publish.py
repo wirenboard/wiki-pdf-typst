@@ -23,10 +23,15 @@ def sanitize_filename(page_name: str) -> str:
     return page_name + "_manual.pdf"
 
 TEMPLATE_TITLE = "Wbincludes:pdf"
+# A bootstrap stub for a fresh wiki, not a copy of the live template: the one on
+# wiki.wirenboard.com has since grown an icon, translation markup and its own
+# documentation. --setup will not overwrite an existing page for that reason.
+# The link has to be built exactly the way sanitize_filename() builds the upload
+# name, or the download button points at a file that was never stored.
 TEMPLATE_WIKITEXT = """\
-<div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
-&#x1F4CB; '''[[Media:{{PAGENAME}}_manual.pdf|Скачать PDF-версию руководства]]'''
-</div>"""
+<includeonly><div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
+&#x1F4CB; '''[[Media:{{#replace:{{#replace:{{PAGENAME}}|:|-}}|/|-}}_manual.pdf|Скачать PDF-версию руководства]]'''
+</div></includeonly>"""
 
 
 def main():
