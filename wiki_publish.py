@@ -15,7 +15,12 @@ BOT_PASS = os.environ.get("WIKI_BOT_PASS", "")
 
 def sanitize_filename(page_name: str) -> str:
     """Convert a wiki page name to a safe upload filename, matching MediaWiki's sanitization."""
-    return page_name.replace("/", "-") + "_manual.pdf"
+    # MediaWiki maps every $wgIllegalFileChars (":/\\" by default) to "-" on
+    # upload; mirror it, or the staleness lookup misses the stored file and the
+    # page is regenerated and re-uploaded on every run.
+    for char in ":/\\":
+        page_name = page_name.replace(char, "-")
+    return page_name + "_manual.pdf"
 
 TEMPLATE_TITLE = "Wbincludes:pdf"
 TEMPLATE_WIKITEXT = """\
