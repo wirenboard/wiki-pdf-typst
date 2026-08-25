@@ -7,7 +7,7 @@ import os
 import sys
 import time
 
-from lib.wiki_api import WikiBot
+from lib.wiki_api import WikiBot, upload_is_no_change
 from wiki2pdf import generate_pdf, BASE_URL
 
 BOT_USER = os.environ.get("WIKI_BOT_USER", "")
@@ -113,17 +113,16 @@ def main():
     pdf_revs = {}
     pdf_sha1s = {}
     if not args.no_upload:
+        print("Checking for updates...", file=sys.stderr)
         upload_names = [sanitize_filename(p) for p in pages]
-        if args.force:
-            # --force means regenerate, not re-store. Output is reproducible, so a
-            # PDF that matches the stored one is not uploaded again: an unchanged
-            # page would otherwise cost a full new file version on every push.
-            print("Fetching stored PDF hashes...", file=sys.stderr)
-            pdf_sha1s = bot.get_file_sha1s(upload_names)
-        else:
-            print("Checking for updates...", file=sys.stderr)
+        if not args.force:
             page_revs = bot.get_page_revisions(pages)
             pdf_revs = bot.get_file_revisions(upload_names)
+        # Output is reproducible, so a PDF matching the stored one is never uploaded.
+        # The wiki refuses such an upload anyway; sending it would mean a full
+        # generation of files on the wire under --force, and an edit that leaves the
+        # rendering untouched would otherwise re-send one large PDF on every run.
+        pdf_sha1s = bot.get_file_sha1s(upload_names)
 
     success = []
     skipped = []
@@ -158,7 +157,12 @@ def main():
                 print(f"  Uploading as {upload_name}...", file=sys.stderr)
                 comment = (f"Auto-generated from revision {revid}. "
                            f"https://github.com/wirenboard/wiki-pdf-typst")
-                bot.upload_file(upload_name, pdf_path, comment=comment)
+                result = bot.upload_file(upload_name, pdf_path, comment=comment)
+                if upload_is_no_change(result):
+                    # Raced with another run, or the hash lookup found nothing.
+                    print("  Wiki already holds this exact file", file=sys.stderr)
+                    unchanged.append(page)
+                    continue
                 print(f"  Uploaded.", file=sys.stderr)
 
             success.append(page)

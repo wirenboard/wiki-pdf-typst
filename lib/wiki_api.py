@@ -6,6 +6,17 @@ from lib.fetcher import VERIFY_SSL
 
 DEFAULT_API_URL = "https://wiki.wirenboard.com/wiki/api.php"
 
+# How the wiki reports that an upload matched the stored version exactly. Depending
+# on the version it arrives as an error code or as an upload warning, so both are read.
+NO_CHANGE_CODE = "fileexists-no-change"
+
+
+def upload_is_no_change(result: dict) -> bool:
+    """True when the wiki kept the stored file because the upload matched it byte for byte."""
+    if result.get("error", {}).get("code") == NO_CHANGE_CODE:
+        return True
+    return NO_CHANGE_CODE in (result.get("upload", {}).get("warnings") or {})
+
 
 class WikiBot:
     """Authenticated MediaWiki bot session."""
@@ -65,7 +76,12 @@ class WikiBot:
         return pages
 
     def upload_file(self, filename: str, file_path: str, comment: str = "") -> dict:
-        """Upload a file to the wiki."""
+        """Upload a file to the wiki.
+
+        An upload identical to the stored version is refused with
+        fileexists-no-change. The wiki already holds what we wanted it to hold, so
+        that comes back as a result to inspect, not as a raised failure.
+        """
         token = self.get_csrf_token()
         with open(file_path, "rb") as f:
             resp = self.session.post(self.api_url, data={
@@ -76,7 +92,7 @@ class WikiBot:
             }, files={"file": (filename, f)}, timeout=120)
         resp.raise_for_status()
         data = resp.json()
-        if "error" in data:
+        if "error" in data and not upload_is_no_change(data):
             raise RuntimeError(f"Upload failed: {data['error']['info']}")
         return data
 
