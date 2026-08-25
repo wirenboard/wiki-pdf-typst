@@ -81,12 +81,6 @@ def main():
             for r in resp.json()["query"]["search"]:
                 if r["title"] not in pages:
                     pages.append(r["title"])
-        # Filter to main namespace (exclude template/special pages)
-        _WIKI_NS = {"Talk", "User", "File", "Template", "Category", "Help",
-                     "MediaWiki", "Special", "Wbincludes", "Wbtables",
-                     "Участник", "Файл", "Шаблон", "Категория", "Служебная"}
-        pages = [p for p in pages
-                 if ":" not in p or p.split(":", 1)[0] not in _WIKI_NS]
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
     if not pages:
