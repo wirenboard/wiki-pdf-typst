@@ -17,11 +17,10 @@ def sanitize_filename(page_name: str) -> str:
     """Convert a wiki page name to a safe upload filename, matching MediaWiki's sanitization."""
     return page_name.replace("/", "-") + "_manual.pdf"
 
+# The template itself lives on the wiki: it is marked for translation and
+# carries its own documentation, so it is edited there, not from here.
+# Its filename formula must stay in step with sanitize_filename() above.
 TEMPLATE_TITLE = "Wbincludes:pdf"
-TEMPLATE_WIKITEXT = """\
-<div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
-&#x1F4CB; '''[[Media:{{PAGENAME}}_manual.pdf|Скачать PDF-версию руководства]]'''
-</div>"""
 
 
 def main():
@@ -35,8 +34,6 @@ def main():
     parser.add_argument("--page", help="Process only this page name")
     parser.add_argument("--keep-typst", action="store_true",
                         help="Keep intermediate .typ files")
-    parser.add_argument("--setup", action="store_true",
-                        help="Create the Wbincludes:pdf template on the wiki")
     parser.add_argument("--pages-from", metavar="FILE",
                         help="Read page names from file (one per line) instead of querying wiki")
     parser.add_argument("--force", action="store_true",
@@ -51,13 +48,6 @@ def main():
     print("Logging in...", file=sys.stderr)
     bot.login(BOT_USER, BOT_PASS)
     print("Logged in.", file=sys.stderr)
-
-    if args.setup:
-        print("Creating template...", file=sys.stderr)
-        bot.edit_page(TEMPLATE_TITLE, TEMPLATE_WIKITEXT,
-                      summary="Create PDF download template")
-        print(f"Template {TEMPLATE_TITLE} created.", file=sys.stderr)
-        return
 
     # Get page list
     if args.page:
