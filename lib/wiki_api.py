@@ -160,14 +160,18 @@ class WikiBot:
                         results[original] = m.group(1)
         return results
 
-    def edit_page(self, title: str, text: str, summary: str = "") -> dict:
-        """Create or edit a wiki page."""
+    def edit_page(self, title: str, text: str, summary: str = "",
+                  createonly: bool = False) -> dict:
+        """Create or edit a wiki page; createonly fails if it already exists."""
         token = self.get_csrf_token()
-        resp = self.session.post(self.api_url, data={
+        params = {
             "action": "edit", "title": title,
             "text": text, "summary": summary or "Auto-created",
             "format": "json", "token": token,
-        }, timeout=30)
+        }
+        if createonly:
+            params["createonly"] = "1"
+        resp = self.session.post(self.api_url, data=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         if "error" in data:
