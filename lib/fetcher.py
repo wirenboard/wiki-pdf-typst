@@ -105,7 +105,7 @@ def inline_link_sections(html: str, base_url: str) -> str:
             continue
         # This section has exactly one internal wiki link — inline it
         linked_page = links[0].split("/wiki/", 1)[-1]
-        print(f"  Inlining: {linked_page}", file=sys.stderr, flush=True)
+        print(f"  Inlining: {linked_page}", flush=True)
         try:
             page_data = fetch_page(base_url, linked_page)
             sub_html = page_data["html"]
