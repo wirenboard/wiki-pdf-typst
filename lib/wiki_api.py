@@ -44,12 +44,14 @@ class WikiBot:
         resp.raise_for_status()
         return resp.json()["query"]["tokens"]["csrftoken"]
 
-    def get_pages_with_template(self, template_title: str) -> list[str]:
-        """Query all pages transcluding a given template."""
+    def get_pages_with_template(self, template_title: str,
+                                namespace: int = 0) -> list[str]:
+        """Query all pages in a namespace transcluding a given template."""
         pages = []
         params = {
             "action": "query", "list": "embeddedin",
             "eititle": template_title, "eilimit": "500",
+            "einamespace": str(namespace),
             "format": "json",
         }
         while True:
