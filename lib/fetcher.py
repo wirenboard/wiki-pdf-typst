@@ -137,6 +137,15 @@ def _href_to_page(href: str, base_url: str) -> str | None:
     return title
 
 
+def _inline_anchor(page: str) -> str:
+    """Label for the section a page was inlined into.
+
+    A hash, not the title: the label has to survive Typst's identifier rules and
+    the converter's own sanitisation, and page titles are Cyrillic as often as not.
+    """
+    return "inlined-" + hashlib.sha1(page.encode("utf-8")).hexdigest()[:8]
+
+
 def inline_link_sections(html: str, base_url: str) -> str:
     """Replace sections that only contain a link to another wiki page
     with the content of that page."""
@@ -219,8 +228,14 @@ def inline_link_sections(html: str, base_url: str) -> str:
                 new_level = min(max(level + offset, 1), 6)
                 h_tag.name = f"h{new_level}"
 
-        # Insert sub-content children after the heading
+        # Insert sub-content children after the heading, behind an anchor a link
+        # can point at. Only the first time: two markers with one label would make
+        # the reference ambiguous and fail the Typst build.
         insert_after = heading
+        if linked_page not in inlined_pages:
+            marker = soup.new_tag("div", id=_inline_anchor(linked_page))
+            insert_after.insert_after(marker)
+            insert_after = marker
         for child in list(sub_content.children):
             insert_after.insert_after(child)
             insert_after = child
@@ -232,14 +247,14 @@ def inline_link_sections(html: str, base_url: str) -> str:
         # Matched on the page a link resolves to, not on a substring of the href —
         # "/wiki/WB-MIO" is also a substring of "/wiki/WB-MIO_Revisions", so the old
         # test stripped links to neighbouring pages that were never inlined.
+        # Point them at the anchor instead of dropping them: the material is in
+        # this document, but it can be tens of pages away, and a reader left with
+        # plain text has no way of knowing it is there at all.
         for a in soup.find_all("a"):
             href = a.get("href", "") or ""
-            if _href_to_page(href, base_url) in inlined_pages:
-                fragment = urlparse(href).fragment
-                if fragment:
-                    a["href"] = f"#{fragment}"
-                else:
-                    a.replace_with(a.get_text())
+            page = _href_to_page(href, base_url)
+            if page in inlined_pages:
+                a["href"] = "#" + _inline_anchor(page)
         return str(soup)
     return html
 
