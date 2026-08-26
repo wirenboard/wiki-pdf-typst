@@ -6,16 +6,17 @@ from lib.fetcher import VERIFY_SSL
 
 DEFAULT_API_URL = "https://wiki.wirenboard.com/wiki/api.php"
 
-# How the wiki reports that an upload matched the stored version exactly. Depending
-# on the version it arrives as an error code or as an upload warning, so both are read.
+# How the wiki reports that an upload matched the stored version exactly. This is an
+# error, not a warning: LocalFile::upload() fails the operation outright once the
+# hashes match, so ignorewarnings never comes into it and there is no second form to
+# read. The upload warning for an unchanged file is a different thing entirely, keyed
+# "nochange", and is unreachable here because ignorewarnings is always set.
 NO_CHANGE_CODE = "fileexists-no-change"
 
 
 def upload_is_no_change(result: dict) -> bool:
     """True when the wiki kept the stored file because the upload matched it byte for byte."""
-    if result.get("error", {}).get("code") == NO_CHANGE_CODE:
-        return True
-    return NO_CHANGE_CODE in (result.get("upload", {}).get("warnings") or {})
+    return result.get("error", {}).get("code") == NO_CHANGE_CODE
 
 
 class WikiBot:
@@ -169,20 +170,17 @@ class WikiBot:
                 if original and "imageinfo" in page:
                     yield original, page["imageinfo"][0]
 
-    def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
-        """Batch-fetch source revision IDs from upload comments of multiple files."""
-        results = {f: None for f in filenames}
-        for name, info in self._imageinfo(filenames, "comment"):
-            m = re.search(r"Auto-generated from revision (\d+)", info.get("comment", ""))
-            if m:
-                results[name] = m.group(1)
-        return results
+    def get_file_state(self, filenames: list[str]) -> dict[str, dict[str, str | None]]:
+        """Batch-fetch what is stored for each file: source revision id and SHA-1.
 
-    def get_file_sha1s(self, filenames: list[str]) -> dict[str, str | None]:
-        """Batch-fetch the SHA-1 of each file's current version (hex, as sha1sum reports)."""
-        results = {f: None for f in filenames}
-        for name, info in self._imageinfo(filenames, "sha1"):
-            results[name] = info.get("sha1")
+        The revision id is read back from the upload comment, the SHA-1 comes as hex,
+        directly comparable with hashlib. Both live in the same imageinfo record, so
+        they are asked for together rather than in two passes over the same titles.
+        """
+        results = {f: {"revid": None, "sha1": None} for f in filenames}
+        for name, info in self._imageinfo(filenames, "comment|sha1"):
+            m = re.search(r"Auto-generated from revision (\d+)", info.get("comment", ""))
+            results[name] = {"revid": m.group(1) if m else None, "sha1": info.get("sha1")}
         return results
 
     def edit_page(self, title: str, text: str, summary: str = "") -> dict:

@@ -108,21 +108,17 @@ def main():
             print(f"  {page}")
         return
 
-    # Batch-fetch revisions for staleness check
+    # Batch-fetch what the wiki already holds, for the staleness and content checks
     page_revs = {}
-    pdf_revs = {}
-    pdf_sha1s = {}
+    file_state = {}
     if not args.no_upload:
         print("Checking for updates...", file=sys.stderr)
-        upload_names = [sanitize_filename(p) for p in pages]
+        # Output is reproducible, so a PDF matching the stored one is never uploaded:
+        # the wiki refuses such an upload as an error, which would fail the run, and
+        # under --force that is every unchanged page.
+        file_state = bot.get_file_state([sanitize_filename(p) for p in pages])
         if not args.force:
             page_revs = bot.get_page_revisions(pages)
-            pdf_revs = bot.get_file_revisions(upload_names)
-        # Output is reproducible, so a PDF matching the stored one is never uploaded.
-        # The wiki refuses such an upload anyway; sending it would mean a full
-        # generation of files on the wire under --force, and an edit that leaves the
-        # rendering untouched would otherwise re-send one large PDF on every run.
-        pdf_sha1s = bot.get_file_sha1s(upload_names)
 
     success = []
     skipped = []
@@ -131,11 +127,13 @@ def main():
 
     for i, page in enumerate(pages):
         print(f"\n[{i+1}/{len(pages)}] {page}", file=sys.stderr, flush=True)
+        upload_name = sanitize_filename(page)
+        stored = file_state.get(upload_name, {})
 
         # Check if PDF is already up to date
         if not args.force and not args.no_upload:
             current_rev = page_revs.get(page)
-            pdf_rev = pdf_revs.get(sanitize_filename(page))
+            pdf_rev = stored.get("revid")
             if current_rev and pdf_rev and current_rev == pdf_rev:
                 print(f"  Up to date (rev {current_rev})", file=sys.stderr)
                 skipped.append(page)
@@ -149,8 +147,7 @@ def main():
             print(f"  Generated ({elapsed:.1f}s)", file=sys.stderr)
 
             if not args.no_upload:
-                upload_name = sanitize_filename(page)
-                if pdf_sha1s.get(upload_name) == file_sha1(pdf_path):
+                if stored.get("sha1") == file_sha1(pdf_path):
                     print("  Identical to stored file, upload skipped", file=sys.stderr)
                     unchanged.append(page)
                     continue
@@ -177,6 +174,16 @@ def main():
           file=sys.stderr)
     for page, err in failed:
         print(f"  FAIL: {page}: {err}", file=sys.stderr)
+
+    if unchanged and not args.force:
+        # Reaching this without --force means the staleness check could not settle:
+        # either the stored file carries no "Auto-generated from revision N" comment,
+        # or the page reports no revision id. Such a page rebuilds on every run.
+        print(f"\nWARNING: {len(unchanged)} page(s) rebuilt to bytes already stored, without "
+              f"--force. Their revision bookkeeping is broken, so they rebuild every run:",
+              file=sys.stderr)
+        for page in unchanged:
+            print(f"  {page}", file=sys.stderr)
 
     if failed:
         sys.exit(1)
