@@ -305,6 +305,11 @@ class HtmlToTypstConverter:
             self._process_image(node)
         elif tag == "div":
             self._process_div(node)
+        elif tag == "figure":
+            # MediaWiki 1.43 emits <figure typeof="mw:File/Thumb"> where 1.37 emitted
+            # <div class="thumb">. Without this the figure fell through to the inline
+            # path, which renders any image at the height of a line of text.
+            self._process_figure(node)
         elif tag == "hr":
             self._emit_blank()
             self._emit("#line(length: 100%)")
@@ -583,9 +588,8 @@ class HtmlToTypstConverter:
         if self.in_table:
             self._emit(f'#image("{local_path}", width: 80%)')
         else:
-            thumb = node.find_parent("div", class_="thumb")
-            if thumb:
-                return  # Will be handled by _process_div
+            if node.find_parent("div", class_="thumb") or node.find_parent("figure"):
+                return  # Will be handled by _process_figure
             self._emit(f'#constrained-image("{local_path}", width: 80%)')
 
     def _process_div(self, node: Tag):
@@ -691,7 +695,7 @@ class HtmlToTypstConverter:
             self._process_children(node)
             return
 
-        caption_div = node.find("div", class_="thumbcaption")
+        caption_div = node.find("figcaption") or node.find("div", class_="thumbcaption")
         caption = ""
         if caption_div:
             magnify = caption_div.find("div", class_="magnify")
@@ -791,6 +795,18 @@ class HtmlToTypstConverter:
             if color:
                 return f'#text(fill: rgb("{color}"))[{content}]'
             return content
+        elif name == "figure":
+            img = tag.find("img")
+            if img:
+                src = img.get("src", "")
+                # An animated GIF renders as a grid of frames; let the img branch
+                # build it rather than flattening the animation to one still.
+                if self.gif_frames.get(src):
+                    return self._inline_content(tag)
+                local_path = self.image_map.get(src)
+                if local_path:
+                    return f'#image("{local_path}", width: 60%)'
+            return ""
         elif name == "div":
             classes = tag.get("class") or []
             if "thumb" in classes:
