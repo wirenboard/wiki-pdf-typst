@@ -3,6 +3,7 @@
 import hashlib
 import os
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, unquote, urlparse, parse_qs
 
@@ -98,7 +99,8 @@ def _skip_prefixes(base_url: str) -> tuple[str, ...]:
             prefixes |= {f"{alias['*']}:" for alias in data.get("namespacealiases", [])
                          if alias["id"] in skip_ids and alias.get("*")}
         except Exception as e:
-            print(f"  Warning: namespace names unavailable ({e}); using fallback", flush=True)
+            print(f"  Warning: namespace names unavailable ({e}); using fallback",
+                  file=sys.stderr, flush=True)
             prefixes = set(_SKIP_PREFIXES)
         _NS_PREFIX_CACHE[base_url] = tuple(prefixes)
     return _NS_PREFIX_CACHE[base_url]
