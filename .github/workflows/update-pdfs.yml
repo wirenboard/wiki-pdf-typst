@@ -11,6 +11,10 @@ on:
       - 'batch_generate.py'
       - 'audit_pdfs.py'
       - 'wiki_add_template.py'
+      # Queue selection and upload logic cannot change a single byte of any
+      # PDF, so a change here must not force a full regeneration.
+      - 'wiki_publish.py'
+      - 'lib/wiki_api.py'
   workflow_dispatch:  # Manual trigger
 
 jobs:
