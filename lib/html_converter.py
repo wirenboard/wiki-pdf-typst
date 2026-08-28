@@ -217,23 +217,43 @@ class HtmlToTypstConverter:
 
     def _extract_cover_image(self, content):
         """Find the first content image and remove it from the tree (for the cover page)."""
-        # Look for the first thumb/figure div or standalone img
-        thumb = content.find("div", class_="thumb")
-        if thumb:
-            img = thumb.find("img")
-            if img:
-                src = img.get("src", "")
-                if src and src in self.image_map:
-                    self.cover_image = self.image_map[src]
-                    thumb.decompose()
-                    return
-        # Fallback: first <img> in content
-        for img in content.find_all("img"):
-            src = img.get("src", "")
+        # The lead photo of the device, which is what belongs on the cover. MediaWiki
+        # 1.43 emits it as <figure typeof="mw:File/Thumb"> where 1.37 emitted
+        # <div class="thumb">, while gallery items kept the old markup — so searching
+        # for div.thumb alone finds the first gallery picture instead: a wiring diagram
+        # or a web-interface screenshot. It also took that picture out of the gallery,
+        # which drops it from the rendered gallery along with its caption.
+        for holder in content.find_all(["figure", "div"]):
+            if holder.name == "div" and "thumb" not in (holder.get("class") or []):
+                continue
+            if holder.find_parent("li", class_="gallerybox"):
+                continue
+            img = holder.find("img")
+            src = img.get("src", "") if img else ""
             if src and src in self.image_map:
                 self.cover_image = self.image_map[src]
-                img.decompose()
+                holder.decompose()
                 return
+        # Fallback for a page with no lead figure: the first image anywhere. Prefer one
+        # outside a gallery, because taking it means removing it, and _process_gallery
+        # skips an item with no image -- the gallery would lose a picture and its
+        # caption. A gallery image is still better than no cover at all, so it is used
+        # as a last resort but left in place; the cost is seeing it twice, which for a
+        # picture buried mid-document is cheaper than a hole in the gallery.
+        gallery_fallback = None
+        for img in content.find_all("img"):
+            src = img.get("src", "")
+            if not src or src not in self.image_map:
+                continue
+            if img.find_parent("li", class_="gallerybox"):
+                if gallery_fallback is None:
+                    gallery_fallback = src
+                continue
+            self.cover_image = self.image_map[src]
+            img.decompose()
+            return
+        if gallery_fallback:
+            self.cover_image = self.image_map[gallery_fallback]
 
     def _strip_unwanted(self, soup: BeautifulSoup):
         """Remove elements that shouldn't appear in the PDF (single traversal)."""
