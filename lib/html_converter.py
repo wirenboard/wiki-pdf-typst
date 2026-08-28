@@ -743,6 +743,11 @@ class HtmlToTypstConverter:
             if not text:
                 return ""
             if href.startswith("#"):
+                # Only our own inlining anchors become links. Every other fragment
+                # points at a section heading that carries no label, and linking to
+                # a label the document does not define fails the Typst build.
+                if href.startswith("#inlined-"):
+                    return f'#link(<{href[1:]}>)[{self._escape(text)}]'
                 return self._escape(text)
             if href.startswith("/"):
                 href = self.base_url + href
