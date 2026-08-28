@@ -188,7 +188,7 @@ def inline_link_sections(html: str, base_url: str) -> str:
             page_data = fetch_page(base_url, linked_page)
             sub_html = page_data["html"]
         except Exception as e:
-            print(f"  Warning: failed to fetch {linked_page}: {e}", flush=True)
+            print(f"  Warning: failed to fetch {linked_page}: {e}", file=sys.stderr, flush=True)
             continue
 
         # Parse the sub-page content
@@ -306,7 +306,7 @@ def download_images(html: str, base_url: str, output_dir: str) -> tuple[dict[str
                 if future.result():
                     image_map[src_key] = rel
                 else:
-                    print(f"  Warning: failed to download {src_key}", flush=True)
+                    print(f"  Warning: failed to download {src_key}", file=sys.stderr, flush=True)
 
     # Post-process GIF files: extract diverse frames
     gif_frames = {}  # src -> (list of relative frame paths, list of timestamps_ms)
@@ -401,7 +401,7 @@ def _extract_gif_frames(gif_path: str, output_dir: str, max_frames: int = 8) -> 
 
         return paths, timestamps
     except Exception as e:
-        print(f"  Warning: GIF frame extraction failed for {gif_path}: {e}", flush=True)
+        print(f"  Warning: GIF frame extraction failed for {gif_path}: {e}", file=sys.stderr, flush=True)
         return None
 
 
