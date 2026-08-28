@@ -2,11 +2,12 @@
 """Query wiki for pages with {{Wbincludes:pdf}}, generate PDFs, upload to wiki."""
 
 import argparse
+import hashlib
 import os
 import sys
 import time
 
-from lib.wiki_api import WikiBot
+from lib.wiki_api import WikiBot, upload_is_no_change
 from wiki2pdf import generate_pdf, BASE_URL
 
 BOT_USER = os.environ.get("WIKI_BOT_USER", "")
@@ -32,6 +33,15 @@ TEMPLATE_WIKITEXT = """\
 <includeonly><div class="pdf-download noprint" style="background:#f0f7ff; border:1px solid #c0d8f0; border-radius:4px; padding:8px 12px; margin:8px 0;">
 &#x1F4CB; '''[[Media:{{#replace:{{#replace:{{PAGENAME}}|:|-}}|/|-}}_manual.pdf|Скачать PDF-версию руководства]]'''
 </div></includeonly>"""
+
+
+def file_sha1(path: str) -> str:
+    """SHA-1 of a file's contents, in the same hex form the wiki reports for uploads."""
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
@@ -109,25 +119,32 @@ def main():
             print(f"  {page}")
         return
 
-    # Batch-fetch revisions for staleness check
+    # Batch-fetch what the wiki already holds, for the staleness and content checks
     page_revs = {}
-    pdf_revs = {}
-    if not args.force and not args.no_upload:
+    file_state = {}
+    if not args.no_upload:
         print("Checking for updates...", file=sys.stderr)
-        page_revs = bot.get_page_revisions(pages)
-        pdf_revs = bot.get_file_revisions([sanitize_filename(p) for p in pages])
+        # Output is reproducible, so a PDF matching the stored one is never uploaded:
+        # the wiki refuses such an upload as an error, which would fail the run, and
+        # under --force that is every unchanged page.
+        file_state = bot.get_file_state([sanitize_filename(p) for p in pages])
+        if not args.force:
+            page_revs = bot.get_page_revisions(pages)
 
     success = []
     skipped = []
+    unchanged = []
     failed = []
 
     for i, page in enumerate(pages):
         print(f"\n[{i+1}/{len(pages)}] {page}", file=sys.stderr, flush=True)
+        upload_name = sanitize_filename(page)
+        stored = file_state.get(upload_name, {})
 
         # Check if PDF is already up to date
         if not args.force and not args.no_upload:
             current_rev = page_revs.get(page)
-            pdf_rev = pdf_revs.get(sanitize_filename(page))
+            pdf_rev = stored.get("revid")
             if current_rev and pdf_rev and current_rev == pdf_rev:
                 print(f"  Up to date (rev {current_rev})", file=sys.stderr)
                 skipped.append(page)
@@ -141,11 +158,19 @@ def main():
             print(f"  Generated ({elapsed:.1f}s)", file=sys.stderr)
 
             if not args.no_upload:
-                upload_name = sanitize_filename(page)
+                if stored.get("sha1") == file_sha1(pdf_path):
+                    print("  Identical to stored file, upload skipped", file=sys.stderr)
+                    unchanged.append(page)
+                    continue
                 print(f"  Uploading as {upload_name}...", file=sys.stderr)
                 comment = (f"Auto-generated from revision {revid}. "
                            f"https://github.com/wirenboard/wiki-pdf-typst")
-                bot.upload_file(upload_name, pdf_path, comment=comment)
+                result = bot.upload_file(upload_name, pdf_path, comment=comment)
+                if upload_is_no_change(result):
+                    # Raced with another run, or the hash lookup found nothing.
+                    print("  Wiki already holds this exact file", file=sys.stderr)
+                    unchanged.append(page)
+                    continue
                 print(f"  Uploaded.", file=sys.stderr)
 
             success.append(page)
@@ -155,10 +180,21 @@ def main():
             print(f"  FAILED ({elapsed:.1f}s): {err}", file=sys.stderr)
             failed.append((page, err))
 
-    print(f"\n=== Results: {len(success)} updated, {len(skipped)} up-to-date, {len(failed)} failed ===",
+    print(f"\n=== Results: {len(success)} updated, {len(skipped)} up-to-date, "
+          f"{len(unchanged)} regenerated but unchanged, {len(failed)} failed ===",
           file=sys.stderr)
     for page, err in failed:
         print(f"  FAIL: {page}: {err}", file=sys.stderr)
+
+    if unchanged and not args.force:
+        # Reaching this without --force means the staleness check could not settle:
+        # either the stored file carries no "Auto-generated from revision N" comment,
+        # or the page reports no revision id. Such a page rebuilds on every run.
+        print(f"\nWARNING: {len(unchanged)} page(s) rebuilt to bytes already stored, without "
+              f"--force. Their revision bookkeeping is broken, so they rebuild every run:",
+              file=sys.stderr)
+        for page in unchanged:
+            print(f"  {page}", file=sys.stderr)
 
     if failed:
         sys.exit(1)

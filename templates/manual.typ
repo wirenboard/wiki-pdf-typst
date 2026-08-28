@@ -6,6 +6,17 @@
 #let doc-cover-image = ""
 #let doc-url = ""
 #let doc-revid = ""
+#let doc-date-iso = ""
+
+// Pin the PDF timestamp to the source revision. Left to itself Typst stamps the
+// current time into /CreationDate, /ModDate and /ID, so recompiling an unchanged
+// page yields a different file every run and the wiki stores it as a new version.
+#set document(date: if doc-date-iso != "" {
+  let p = doc-date-iso.split("-")
+  datetime(year: int(p.at(0)), month: int(p.at(1)), day: int(p.at(2)))
+} else {
+  none
+})
 
 // Page setup
 #set page(

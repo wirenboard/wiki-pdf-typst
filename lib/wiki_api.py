@@ -6,6 +6,18 @@ from lib.fetcher import VERIFY_SSL
 
 DEFAULT_API_URL = "https://wiki.wirenboard.com/wiki/api.php"
 
+# How the wiki reports that an upload matched the stored version exactly. This is an
+# error, not a warning: LocalFile::upload() fails the operation outright once the
+# hashes match, so ignorewarnings never comes into it and there is no second form to
+# read. The upload warning for an unchanged file is a different thing entirely, keyed
+# "nochange", and is unreachable here because ignorewarnings is always set.
+NO_CHANGE_CODE = "fileexists-no-change"
+
+
+def upload_is_no_change(result: dict) -> bool:
+    """True when the wiki kept the stored file because the upload matched it byte for byte."""
+    return result.get("error", {}).get("code") == NO_CHANGE_CODE
+
 
 class WikiBot:
     """Authenticated MediaWiki bot session."""
@@ -67,7 +79,12 @@ class WikiBot:
         return pages
 
     def upload_file(self, filename: str, file_path: str, comment: str = "") -> dict:
-        """Upload a file to the wiki."""
+        """Upload a file to the wiki.
+
+        An upload identical to the stored version is refused with
+        fileexists-no-change. The wiki already holds what we wanted it to hold, so
+        that comes back as a result to inspect, not as a raised failure.
+        """
         token = self.get_csrf_token()
         with open(file_path, "rb") as f:
             resp = self.session.post(self.api_url, data={
@@ -78,7 +95,7 @@ class WikiBot:
             }, files={"file": (filename, f)}, timeout=120)
         resp.raise_for_status()
         data = resp.json()
-        if "error" in data:
+        if "error" in data and not upload_is_no_change(data):
             raise RuntimeError(f"Upload failed: {data['error']['info']}")
         return data
 
@@ -134,9 +151,8 @@ class WikiBot:
                     results[title] = str(page["revisions"][0]["revid"])
         return results
 
-    def get_file_revisions(self, filenames: list[str]) -> dict[str, str | None]:
-        """Batch-fetch source revision IDs from upload comments of multiple files."""
-        results = {f: None for f in filenames}
+    def _imageinfo(self, filenames: list[str], iiprop: str):
+        """Yield (requested filename, imageinfo of current version) for files that exist."""
         # Build a lookup: normalized name -> original filename
         norm_lookup = {f.replace("_", " "): f for f in filenames}
         titles = [f"File:{f}" for f in filenames]
@@ -144,7 +160,7 @@ class WikiBot:
             batch = titles[i:i+50]
             resp = self.session.get(self.api_url, params={
                 "action": "query", "titles": "|".join(batch),
-                "prop": "imageinfo", "iiprop": "comment",
+                "prop": "imageinfo", "iiprop": iiprop,
                 "format": "json",
             }, timeout=30)
             resp.raise_for_status()
@@ -154,10 +170,19 @@ class WikiBot:
                 fname = title.split(":", 1)[-1] if ":" in title else title
                 original = norm_lookup.get(fname) or norm_lookup.get(fname.replace(" ", "_"))
                 if original and "imageinfo" in page:
-                    comment = page["imageinfo"][0].get("comment", "")
-                    m = re.search(r"Auto-generated from revision (\d+)", comment)
-                    if m:
-                        results[original] = m.group(1)
+                    yield original, page["imageinfo"][0]
+
+    def get_file_state(self, filenames: list[str]) -> dict[str, dict[str, str | None]]:
+        """Batch-fetch what is stored for each file: source revision id and SHA-1.
+
+        The revision id is read back from the upload comment, the SHA-1 comes as hex,
+        directly comparable with hashlib. Both live in the same imageinfo record, so
+        they are asked for together rather than in two passes over the same titles.
+        """
+        results = {f: {"revid": None, "sha1": None} for f in filenames}
+        for name, info in self._imageinfo(filenames, "comment|sha1"):
+            m = re.search(r"Auto-generated from revision (\d+)", info.get("comment", ""))
+            results[name] = {"revid": m.group(1) if m else None, "sha1": info.get("sha1")}
         return results
 
     def edit_page(self, title: str, text: str, summary: str = "",
