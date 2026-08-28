@@ -17,6 +17,20 @@ on:
       - 'lib/wiki_api.py'
   workflow_dispatch:  # Manual trigger
 
+# One run at a time. Four merges in as many minutes started four --force runs at
+# once, and they collided on the wiki: "Could not acquire lock" and duplicate
+# archive paths, three red runs out of four. Worse, each had read the stored
+# hashes before any of them uploaded, so the older-code runs overwrote what the
+# newest one had already published.
+#
+# cancel-in-progress stays false on purpose: a force run takes ~15 minutes and
+# the schedule ticks every 10, so cancelling would mean a full regeneration
+# never finishes. Queued instead — GitHub keeps only the newest pending run, so
+# a burst of merges collapses to the latest code.
+concurrency:
+  group: update-pdfs
+  cancel-in-progress: false
+
 jobs:
   update-pdfs:
     runs-on: ubuntu-latest
