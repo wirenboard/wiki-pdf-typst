@@ -234,13 +234,26 @@ class HtmlToTypstConverter:
                 self.cover_image = self.image_map[src]
                 holder.decompose()
                 return
-        # Fallback: first <img> in content
+        # Fallback for a page with no lead figure: the first image anywhere. Prefer one
+        # outside a gallery, because taking it means removing it, and _process_gallery
+        # skips an item with no image -- the gallery would lose a picture and its
+        # caption. A gallery image is still better than no cover at all, so it is used
+        # as a last resort but left in place; the cost is seeing it twice, which for a
+        # picture buried mid-document is cheaper than a hole in the gallery.
+        gallery_fallback = None
         for img in content.find_all("img"):
             src = img.get("src", "")
-            if src and src in self.image_map:
-                self.cover_image = self.image_map[src]
-                img.decompose()
-                return
+            if not src or src not in self.image_map:
+                continue
+            if img.find_parent("li", class_="gallerybox"):
+                if gallery_fallback is None:
+                    gallery_fallback = src
+                continue
+            self.cover_image = self.image_map[src]
+            img.decompose()
+            return
+        if gallery_fallback:
+            self.cover_image = self.image_map[gallery_fallback]
 
     def _strip_unwanted(self, soup: BeautifulSoup):
         """Remove elements that shouldn't appear in the PDF (single traversal)."""
