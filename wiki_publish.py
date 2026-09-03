@@ -108,6 +108,12 @@ def main():
             for r in resp.json()["query"]["search"]:
                 if r["title"] not in pages:
                     pages.append(r["title"])
+        # The Translate extension serves Page/<content language> as a 301 to
+        # Page — for the source language the subpage is not something a reader
+        # can land on, and its PDF is a byte-for-byte second copy of the base
+        # one. Real translations (Page/en) redirect nowhere and are kept.
+        source_suffix = "/" + bot.get_content_language()
+        pages = [p for p in pages if not p.endswith(source_suffix)]
         print(f"Found {len(pages)} pages.", file=sys.stderr)
 
     if not pages:
