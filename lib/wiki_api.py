@@ -56,6 +56,15 @@ class WikiBot:
         resp.raise_for_status()
         return resp.json()["query"]["tokens"]["csrftoken"]
 
+    def get_content_language(self) -> str:
+        """The wiki's own content language code, e.g. "ru"."""
+        resp = self.session.get(self.api_url, params={
+            "action": "query", "meta": "siteinfo",
+            "siprop": "general", "format": "json",
+        }, timeout=15)
+        resp.raise_for_status()
+        return resp.json()["query"]["general"]["lang"]
+
     def get_pages_with_template(self, template_title: str,
                                 namespace: int = 0) -> list[str]:
         """Query all pages in a namespace transcluding a given template."""
