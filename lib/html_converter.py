@@ -789,7 +789,10 @@ class HtmlToTypstConverter:
                 return "\n".join(parts)
             return f'#image("{local_path}", height: 1.2em)'
         elif name == "br":
-            return " " if self.in_table else " \\"
+            # The trailing space matters: Typst reads a backslash glued to the next
+            # character as an escape, so "\\" before #strong[...] becomes a literal
+            # "#" and the markup is printed instead of applied.
+            return " " if self.in_table else " \\ "
         elif name == "sup":
             text = self._get_text(tag).strip()
             return f"#super[{self._escape(text)}]" if text else ""
