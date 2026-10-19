@@ -24,6 +24,10 @@ _ESCAPE_TABLE = str.maketrans({
 _RE_BG_HEX = re.compile(r"background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,8})")
 _RE_BG_NAMED = re.compile(r"background(?:-color)?\s*:\s*(\w+)")
 _RE_TEXT_COLOR = re.compile(r"(?:^|;)\s*color\s*:\s*(#[0-9a-fA-F]{3,8})")
+_RE_BG_HEX_ANY = re.compile(r"(#[0-9a-fA-F]{3,8})")
+_RE_BG_GRADIENT = re.compile(r"background(?:-color)?\s*:\s*linear-gradient\(([^)]*)\)", re.I)
+_RE_GRADIENT_ANGLE = re.compile(r"^(-?\d+(?:\.\d+)?)deg$", re.I)
+_RE_GRADIENT_STOP = re.compile(r"^(#[0-9a-fA-F]{3,8})(?:\s+(\d+(?:\.\d+)?)%)?$")
 
 _NAMED_COLORS = {
     "green": "#00aa00", "red": "#ff0000", "yellow": "#ffff00",
@@ -555,7 +559,7 @@ class HtmlToTypstConverter:
                 content = self._inline_content(cell).strip()
                 colspan = int(cell.get("colspan", 1))
                 rowspan = int(cell.get("rowspan", 1))
-                fill_color = self._extract_bg_color(cell)
+                fill_color = self._cell_fill(cell)
 
                 # Fix colspan overflow from rowspan-occupied columns
                 if len(cells) == 1 and colspan >= num_cols:
@@ -577,7 +581,7 @@ class HtmlToTypstConverter:
                 if rowspan > 1:
                     cell_args.append(f"rowspan: {rowspan}")
                 if fill_color:
-                    cell_args.append(f"fill: rgb(\"{fill_color}\")")
+                    cell_args.append(f"fill: {fill_color}")
                 if row_idx < header_rows and cell.name == "th":
                     content = f"#strong[{content}]" if content else ""
 
@@ -895,6 +899,67 @@ class HtmlToTypstConverter:
         if not text:
             return text
         return text.translate(_ESCAPE_TABLE)
+
+    def _cell_fill(self, node: Tag) -> str | None:
+        """Typst fill for a table cell: a colour, or a gradient when the wiki used one."""
+        gradient = self._gradient_fill(node.get("style") or "")
+        if gradient:
+            return gradient
+        color = self._extract_bg_color(node)
+        return f'rgb("{color}")' if color else None
+
+    def _gradient_fill(self, style: str) -> str | None:
+        """Translate a CSS linear-gradient into a Typst one.
+
+        ErrataV2 paints "fixed from batch N" as a half-and-half diagonal. Read flat,
+        the declaration starts with linear-gradient rather than a colour, so the cell
+        used to come out with no fill at all -- indistinguishable from "no data".
+
+        CSS measures the angle from "to top" clockwise, Typst from "to right", hence
+        the 90 degree shift. relative: "self" keeps each cell's gradient inside that
+        cell instead of spanning the table.
+        """
+        m = _RE_BG_GRADIENT.search(style)
+        if not m:
+            return None
+        parts = [p.strip() for p in m.group(1).split(",") if p.strip()]
+        angle = 180.0  # CSS default direction is "to bottom"
+        if parts:
+            a = _RE_GRADIENT_ANGLE.match(parts[0])
+            if a:
+                angle = float(a.group(1))
+                parts = parts[1:]
+        stops = []
+        for part in parts:
+            sm = _RE_GRADIENT_STOP.match(part)
+            if not sm:
+                stops = []
+                break
+            stops.append((sm.group(1), sm.group(2)))
+        if len(stops) < 2:
+            # Unparsed gradient: the first colour still beats leaving the cell blank.
+            fallback = _RE_BG_HEX_ANY.search(m.group(1))
+            return f'rgb("{fallback.group(1)}")' if fallback else None
+        positions = [p for _, p in stops]
+        if positions[0] is None:
+            positions[0] = "0"
+        if positions[-1] is None:
+            positions[-1] = "100"
+        rendered = []
+        for (color, _), pos in zip(stops, positions):
+            if pos is None:
+                rendered.append(f'rgb("{color}")')
+            else:
+                rendered.append(f'(rgb("{color}"), {pos}%)')
+        # CSS extends the end colours beyond the outermost stops; anchor them so the
+        # hard 50/50 split of "fixed from batch N" does not become a smooth ramp.
+        if positions[0] not in (None, "0") and float(positions[0]) > 0:
+            rendered.insert(0, f'(rgb("{stops[0][0]}"), 0%)')
+        if positions[-1] not in (None, "100") and float(positions[-1]) < 100:
+            rendered.append(f'(rgb("{stops[-1][0]}"), 100%)')
+        typst_angle = (angle - 90) % 360
+        return (f'gradient.linear({", ".join(rendered)}, '
+                f'angle: {typst_angle:g}deg, relative: "self")')
 
     def _extract_bg_color(self, node: Tag) -> str | None:
         style = node.get("style") or ""
