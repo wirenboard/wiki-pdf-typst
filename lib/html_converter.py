@@ -60,6 +60,11 @@ _STRIP_IDS = {"toc", "catlinks"}
 _STRIP_CLASSES = {"mw-editsection", "noprint", "navbox", "hidden", "pdf-download"}
 _STRIP_TAGS = {"script", "style"}
 
+# CSS that stands a table header on its end. vertical-rl alone reads top to bottom;
+# the extra rotate(180deg) flips it to bottom to top, which is the usual spelling.
+_RE_VERTICAL_TEXT = re.compile(r"writing-mode\s*:\s*(?:sideways|vertical)-(?:rl|lr)")
+_RE_ROTATE_180 = re.compile(r"rotate\s*\(\s*180deg\s*\)")
+
 # Regex for extracting image paths from generated figure lines
 _RE_FIGURE_IMG = re.compile(r'constrained-image\("([^"]+)"')
 
@@ -575,6 +580,16 @@ class HtmlToTypstConverter:
                     cell_args.append(f"fill: rgb(\"{fill_color}\")")
                 if row_idx < header_rows and cell.name == "th":
                     content = f"#strong[{content}]" if content else ""
+
+                # A header stood on its end keeps the column only as wide as the text
+                # is tall. Printed flat, forty firmware labels want 11 mm each in a
+                # 6 mm column and run into each other, which also squeezes the first
+                # column until its text wraps one syllable per line. reflow makes the
+                # table measure the rotated size rather than the flat one.
+                cell_style = cell.get("style") or ""
+                if content and _RE_VERTICAL_TEXT.search(cell_style):
+                    angle = "-90deg" if _RE_ROTATE_180.search(cell_style) else "90deg"
+                    content = f"#rotate({angle}, reflow: true)[{content}]"
 
                 if cell_args:
                     args = ", ".join(cell_args)
