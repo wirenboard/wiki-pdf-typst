@@ -83,6 +83,29 @@
   align: left,
 )
 
+// Multi-column layout for long lists and narrow tables. The wiki asks for it with
+// CSS column-width / column-count. As in the browser, the number of columns follows
+// the width: the content is measured and as many columns as fit the page are used,
+// capped by `count` (CSS column-count). Content breaks across columns and pages;
+// a table header repeats at the top of each column.
+#let wiki-columns(count: none, gutter: 12pt, body) = layout(size => {
+  let col-w = measure(body).width
+  let n = calc.max(1, calc.floor((size.width + gutter) / (col-w + gutter)))
+  if count != none { n = calc.min(n, count) }
+  if n < 2 { body } else { columns(n, gutter: gutter, body) }
+})
+
+// A <pre> list in columns, framed like a code block. Plain (inline) raw keeps
+// the code-block frame from being drawn around every column fragment.
+#let column-pre(count: none, text) = block(
+  width: 100%,
+  fill: luma(245),
+  stroke: luma(200),
+  inset: 10pt,
+  radius: 3pt,
+  wiki-columns(count: count, raw(text)),
+)
+
 // Table figure captions: "Таблица N: ..." above the table
 #show figure.where(kind: table): set figure(supplement: "Таблица")
 #show figure.where(kind: table): set figure.caption(position: top)
