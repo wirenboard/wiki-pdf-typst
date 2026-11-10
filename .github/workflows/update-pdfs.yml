@@ -3,6 +3,17 @@ name: Update Wiki PDFs
 on:
   schedule:
     - cron: '*/10 * * * *'  # Every 10 minutes
+    # Nightly full rebuild. Staleness is judged by the device page's own
+    # revision id, so a PDF whose content comes from somewhere else -- an
+    # inlined Errata or Revisions page, a template, a Lua module -- never
+    # becomes stale and is never rebuilt. An audit on 2026-11-10 found 62 of
+    # 103 published PDFs behind the wiki that way, some by 20+ pages, the
+    # oldest since September. This run rebuilds everything; the sha1 check
+    # before upload means only PDFs that actually changed are published, so a
+    # quiet night uploads nothing.
+    # Off the hour on purpose: GitHub throttles scheduled runs hardest at
+    # round minutes, when everyone else's cron fires too.
+    - cron: '17 2 * * *'  # 02:17 UTC = 05:17 MSK
   push:
     branches: [master]
     paths-ignore:
@@ -61,6 +72,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "Code push detected — regenerating all PDFs"
+            python3 wiki_publish.py --force
+          elif [ "${{ github.event.schedule }}" = "17 2 * * *" ]; then
+            echo "Nightly run — regenerating all PDFs"
             python3 wiki_publish.py --force
           else
             python3 wiki_publish.py
