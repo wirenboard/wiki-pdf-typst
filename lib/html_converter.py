@@ -69,6 +69,11 @@ _STRIP_TAGS = {"script", "style"}
 _RE_VERTICAL_TEXT = re.compile(r"writing-mode\s*:\s*(?:sideways|vertical)-(?:rl|lr)")
 _RE_ROTATE_180 = re.compile(r"rotate\s*\(\s*180deg\s*\)")
 
+# CSS multi-column layout the wiki puts on a long list (<pre>) or on a <div> around
+# a table. Either property turns columns on; column-count also caps their number.
+_RE_COLUMNS = re.compile(r"(?:^|;)\s*column-(?:count|width)\s*:", re.I)
+_RE_COLUMN_COUNT = re.compile(r"(?:^|;)\s*column-count\s*:\s*(\d+)", re.I)
+
 # Regex for extracting image paths from generated figure lines
 _RE_FIGURE_IMG = re.compile(r'constrained-image\("([^"]+)"')
 
@@ -378,6 +383,15 @@ class HtmlToTypstConverter:
     def _process_code_block(self, node: Tag):
         self._emit_blank()
         code_text = node.get_text()
+        count = self._column_count(node)
+        if count is not None:
+            # A list in columns, e.g. serial numbers in an erratum. One per line
+            # it ran to 66 pages; laid out in columns it takes a handful.
+            text = code_text.strip("\n").replace("\\", "\\\\").replace('"', '\\"')
+            text = text.replace("\r", "").replace("\n", "\\n")
+            self._emit(f'#column-pre(count: {count}, "{text}")')
+            self._emit_blank()
+            return
         lang = ""
         highlight_div = node.find_parent("div", class_=re.compile(r"mw-highlight"))
         if highlight_div:
@@ -651,6 +665,15 @@ class HtmlToTypstConverter:
                 self._process_code_block(pre)
                 return
 
+        count = self._column_count(node)
+        if count is not None and not self._has_wide_table(node):
+            self._emit_blank()
+            self._emit(f"#wiki-columns(count: {count}, gutter: 18pt)[")
+            self._process_children(node)
+            self._emit("]")
+            self._emit_blank()
+            return
+
         # Warning/note boxes
         style = node.get("style") or ""
         if "border" in style and ("background" in style or "padding" in style):
@@ -894,6 +917,31 @@ class HtmlToTypstConverter:
         if isinstance(node, Tag):
             return node.get_text()
         return ""
+
+    @staticmethod
+    def _column_count(node: Tag) -> str | None:
+        """Typst `count:` argument when the element asks for CSS columns, else None.
+
+        The wiki gives column-width so the browser fits as many columns as the
+        screen allows. The PDF does the same: wiki-columns in manual.typ measures
+        the content and fits as many columns as the page width takes, so only
+        column-count (an upper bound) is carried over.
+        """
+        style = node.get("style") or ""
+        if not _RE_COLUMNS.search(style):
+            return None
+        m = _RE_COLUMN_COUNT.search(style)
+        return m.group(1) if m else "none"
+
+    @staticmethod
+    def _has_wide_table(node: Tag) -> bool:
+        """A table of five or more columns gets its own compact or landscape
+        layout in _process_table; a landscape page cannot sit inside columns."""
+        for table in node.find_all("table"):
+            first = table.find("tr")
+            if first and sum(int(c.get("colspan", 1)) for c in first.find_all(["th", "td"])) >= 5:
+                return True
+        return False
 
     def _escape(self, text: str) -> str:
         if not text:
