@@ -1,8 +1,7 @@
 """MediaWiki API client for bot operations (login, upload, page queries)."""
 
 import re
-import requests
-from lib.fetcher import VERIFY_SSL
+from lib.fetcher import make_session
 
 DEFAULT_API_URL = "https://wiki.wirenboard.com/wiki/api.php"
 
@@ -24,8 +23,7 @@ class WikiBot:
 
     def __init__(self, api_url: str = DEFAULT_API_URL):
         self.api_url = api_url
-        self.session = requests.Session()
-        self.session.verify = VERIFY_SSL
+        self.session = make_session()
 
     def login(self, username: str, password: str):
         """Two-step MediaWiki bot login."""
