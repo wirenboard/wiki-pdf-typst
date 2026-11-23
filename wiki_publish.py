@@ -7,6 +7,7 @@ import os
 import sys
 import time
 
+from lib import fetcher
 from lib.wiki_api import WikiBot, upload_is_no_change
 from wiki2pdf import generate_pdf, BASE_URL
 
@@ -72,6 +73,12 @@ def main():
     print("Logging in...", file=sys.stderr)
     bot.login(BOT_USER, BOT_PASS)
     print("Logged in.", file=sys.stderr)
+    # Page and image fetching lives in lib.fetcher and had its own anonymous
+    # session, so the heavy half of every run -- one parse call and dozens of
+    # images per page -- was made as a stranger. The wiki exempts logged-in
+    # callers from its rate limit, which is why a full rebuild was answered
+    # with 429 while the bot's own queries and uploads went through untouched.
+    fetcher.use_session(bot.session)
 
     if args.setup:
         print("Creating template...", file=sys.stderr)

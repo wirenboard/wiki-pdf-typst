@@ -9,13 +9,69 @@ from urllib.parse import urljoin, unquote, urlparse, parse_qs
 
 from bs4 import BeautifulSoup
 import requests
+from requests.adapters import HTTPAdapter
 import urllib3
+from urllib3.util.retry import Retry
 
 # Suppress SSL warnings for environments with self-signed or missing CA certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Set to False to skip SSL verification (e.g. missing CA certs in container)
 VERIFY_SSL = False
+
+# Say who is calling. A shared wiki has to be able to tell this generator apart
+# from a scraper when it decides whom to throttle, and whoever reads the access
+# log should be able to find the code behind the requests.
+USER_AGENT = "wiki-pdf-typst (+https://github.com/wirenboard/wiki-pdf-typst)"
+
+# A full rebuild walks ~100 pages, and every page costs several API calls plus
+# one request per image. The wiki started answering 429 to that burst in
+# November 2026, which failed about half the pages of every nightly run: the
+# generator had no retries, so a throttled request simply lost its page.
+# Downloading fewer images at once lowers the peak; backing off on 429 and 503
+# turns the rest into a wait instead of a failure. Retry-After is honoured when
+# the server sends one, otherwise the delay doubles: 2, 4, 8, 16, 32 seconds.
+_MAX_IMAGE_WORKERS = 4
+_RETRY = Retry(
+    total=5,
+    backoff_factor=2,
+    status_forcelist=(429, 503),
+    # POST included on purpose: login, edit and upload all go by POST, and a
+    # throttled one never reached the wiki. An upload that did get through
+    # before the 429 is caught by the file-exists-no-change path in wiki_api.
+    allowed_methods=frozenset({"GET", "HEAD", "POST"}),
+    respect_retry_after_header=True,
+    raise_on_status=False,
+)
+
+
+def make_session() -> requests.Session:
+    """A requests session that identifies itself and waits out throttling."""
+    session = requests.Session()
+    session.verify = VERIFY_SSL
+    session.headers["User-Agent"] = USER_AGENT
+    adapter = HTTPAdapter(max_retries=_RETRY)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+# Module-level calls share one session, so they share its retries and keep the
+# connection pool warm instead of opening a socket per image. Anonymous by
+# default -- use_session() replaces it with the bot's once something has logged
+# in, which matters: the wiki rate-limits anonymous callers and nobody else.
+SESSION = make_session()
+
+
+def use_session(session: requests.Session) -> None:
+    """Fetch pages and images through an already authenticated session.
+
+    The wiki throttles anonymous requests only, so every call made here with no
+    cookie counts against that limit even when the process is logged in
+    elsewhere. Call this after login and the whole generator speaks as the bot.
+    """
+    global SESSION
+    SESSION = session
 
 # Namespaces whose pages are never inlined as article content, by canonical name.
 # Which namespaces to skip is a deliberate choice; how they are spelled is not, so the
@@ -43,7 +99,7 @@ def fetch_page(base_url: str, page_name: str) -> dict:
         "format": "json",
         "redirects": 1,
     }
-    resp = requests.get(api_url, params=params, timeout=30, verify=VERIFY_SSL)
+    resp = SESSION.get(api_url, params=params, timeout=30)
     resp.raise_for_status()
     data = resp.json()
 
@@ -65,7 +121,7 @@ def fetch_page(base_url: str, page_name: str) -> dict:
             "rvprop": "timestamp",
             "format": "json",
         }
-        resp2 = requests.get(api_url, params=params2, timeout=15, verify=VERIFY_SSL)
+        resp2 = SESSION.get(api_url, params=params2, timeout=15)
         if resp2.ok:
             pages = resp2.json().get("query", {}).get("pages", {})
             for page_data in pages.values():
@@ -85,7 +141,7 @@ def _skip_prefixes(base_url: str) -> tuple[str, ...]:
     """
     if base_url not in _NS_PREFIX_CACHE:
         try:
-            resp = requests.get(f"{base_url}/wiki/api.php", params={
+            resp = SESSION.get(f"{base_url}/wiki/api.php", params={
                 "action": "query", "meta": "siteinfo",
                 "siprop": "namespaces|namespacealiases", "format": "json",
             }, timeout=15, verify=VERIFY_SSL)
@@ -296,7 +352,7 @@ def download_images(html: str, base_url: str, output_dir: str) -> tuple[dict[str
 
     # Download in parallel
     if tasks:
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=_MAX_IMAGE_WORKERS) as pool:
             futures = {
                 pool.submit(_download_one, full_res, full, local): (src_key, rel)
                 for src_key, full_res, full, local, rel in tasks
@@ -415,7 +471,7 @@ def _download_one(
         if url is None:
             continue
         try:
-            resp = requests.get(url, timeout=15, verify=VERIFY_SSL)
+            resp = SESSION.get(url, timeout=15)
             if resp.status_code == 200 and len(resp.content) > 100:
                 with open(local_path, "wb") as f:
                     f.write(resp.content)

@@ -3,17 +3,6 @@ name: Update Wiki PDFs
 on:
   schedule:
     - cron: '*/10 * * * *'  # Every 10 minutes
-    # Nightly full rebuild. Staleness is judged by the device page's own
-    # revision id, so a PDF whose content comes from somewhere else -- an
-    # inlined Errata or Revisions page, a template, a Lua module -- never
-    # becomes stale and is never rebuilt. An audit on 2026-11-10 found 62 of
-    # 103 published PDFs behind the wiki that way, some by 20+ pages, the
-    # oldest since September. This run rebuilds everything; the sha1 check
-    # before upload means only PDFs that actually changed are published, so a
-    # quiet night uploads nothing.
-    # Off the hour on purpose: GitHub throttles scheduled runs hardest at
-    # round minutes, when everyone else's cron fires too.
-    - cron: '17 2 * * *'  # 02:17 UTC = 05:17 MSK
   push:
     branches: [master]
     paths-ignore:
@@ -70,12 +59,27 @@ jobs:
           WIKI_BOT_USER: ${{ secrets.WIKI_BOT_USER }}
           WIKI_BOT_PASS: ${{ secrets.WIKI_BOT_PASS }}
         run: |
+          # A full rebuild is the only thing that catches a PDF whose content
+          # changed somewhere else -- an inlined Errata page, a template, a Lua
+          # module -- because staleness is judged by the device page's own
+          # revision id alone. It walks every page, so it belongs in the night.
+          #
+          # A dedicated nightly cron cannot put it there. GitHub fired the
+          # '17 2 * * *' schedule between 09:30 and 10:50 UTC every single day,
+          # seven to eight hours late, dropping the heaviest run of the day into
+          # working hours. Scheduled runs arrive when GitHub has capacity, about
+          # 4.5 a day for this repository, so the hour is picked from the clock
+          # instead of from the cron: whichever run happens to land in the
+          # window does the rebuild. Over the 23 nights to 2026-11-23 that would
+          # have covered every night, twice on one of them -- and a second full
+          # rebuild in a night costs ~11 minutes and uploads nothing.
+          hour=$(date -u +%-H)
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "Code push detected — regenerating all PDFs"
-            python3 wiki_publish.py --force
-          elif [ "${{ github.event.schedule }}" = "17 2 * * *" ]; then
-            echo "Nightly run — regenerating all PDFs"
-            python3 wiki_publish.py --force
-          else
-            python3 wiki_publish.py
+            set -- --force
+          elif [ "${{ github.event_name }}" = "schedule" ] \
+               && { [ "$hour" -ge 22 ] || [ "$hour" -lt 4 ]; }; then
+            echo "Night window (${hour}:00 UTC) — regenerating all PDFs"
+            set -- --force
           fi
+          python3 wiki_publish.py "$@"
