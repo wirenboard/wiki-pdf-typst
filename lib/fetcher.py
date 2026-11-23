@@ -57,8 +57,21 @@ def make_session() -> requests.Session:
 
 
 # Module-level calls share one session, so they share its retries and keep the
-# connection pool warm instead of opening a socket per image.
+# connection pool warm instead of opening a socket per image. Anonymous by
+# default -- use_session() replaces it with the bot's once something has logged
+# in, which matters: the wiki rate-limits anonymous callers and nobody else.
 SESSION = make_session()
+
+
+def use_session(session: requests.Session) -> None:
+    """Fetch pages and images through an already authenticated session.
+
+    The wiki throttles anonymous requests only, so every call made here with no
+    cookie counts against that limit even when the process is logged in
+    elsewhere. Call this after login and the whole generator speaks as the bot.
+    """
+    global SESSION
+    SESSION = session
 
 # Namespaces whose pages are never inlined as article content, by canonical name.
 # Which namespaces to skip is a deliberate choice; how they are spelled is not, so the
